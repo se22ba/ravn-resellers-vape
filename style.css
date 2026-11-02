@@ -145,3 +145,16 @@ linear-gradient(180deg,rgba(3,5,7,.12),rgba(3,5,7,.7))}
  .admin-costs{grid-template-columns:1fr}
  .admin-price-table{grid-template-columns:1fr}
 }
+
+/* Gate render failsafe */
+.private-bg.neutral-bg,.private-bg.brand-fallback{
+  background-image:
+    radial-gradient(circle at 26% 30%,rgba(72,84,94,.32),transparent 28%),
+    radial-gradient(circle at 66% 62%,rgba(146,119,70,.14),transparent 24%),
+    linear-gradient(135deg,#12191f 0%,#080b0e 45%,#030506 100%);
+}
+.private-bg.brand-fallback:after{
+  content:"ᛉ";
+  position:absolute;left:18%;top:50%;transform:translate(-50%,-50%);
+  font-family:Cinzel,serif;font-size:clamp(180px,26vw,520px);color:rgba(185,157,99,.055);
+}
