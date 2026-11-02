@@ -63,6 +63,10 @@ def order_view(order: Order, public=False):
 
 @app.on_event("startup")
 def startup():
+    if engine.dialect.name == "postgresql" and settings.db_schema:
+        safe_schema = settings.db_schema.replace('"', '""')
+        with engine.begin() as conn:
+            conn.exec_driver_sql(f'CREATE SCHEMA IF NOT EXISTS "{safe_schema}"')
     Base.metadata.create_all(bind=engine)
     db=SessionLocal()
     try: seed(db)
