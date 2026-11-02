@@ -331,3 +331,51 @@ body[data-view="admin"] .admin-catalog-card{
     margin-right:1vw;
   }
 }
+
+
+/* Single continuous client background */
+body[data-view="client"]{
+  background-color:#05080b;
+  background-image:
+    linear-gradient(180deg,rgba(3,6,9,.46) 0%,rgba(3,6,9,.70) 34%,rgba(3,6,9,.84) 100%),
+    var(--brand-bg);
+  background-size:cover;
+  background-position:center top;
+  background-repeat:no-repeat;
+  background-attachment:fixed;
+}
+body[data-view="client"] main{
+  background:transparent;
+}
+body[data-view="client"] .hero{
+  background:transparent;
+}
+body[data-view="client"] .hero-overlay{
+  background:
+    linear-gradient(180deg,rgba(3,5,7,.06) 0%,rgba(3,5,7,.24) 52%,rgba(3,5,7,.78) 100%),
+    linear-gradient(90deg,rgba(3,5,7,.58) 0%,rgba(3,5,7,.18) 58%,rgba(3,5,7,.30) 100%);
+}
+body[data-view="client"] .client-orders-section{
+  background:linear-gradient(180deg,rgba(5,8,11,.62),rgba(5,8,11,.72));
+  backdrop-filter:blur(2px);
+}
+body[data-view="client"] .pill-tabs{
+  background:rgba(6,9,12,.82);
+  backdrop-filter:blur(12px);
+}
+body[data-view="client"] .section{
+  background:linear-gradient(180deg,rgba(5,8,11,.54),rgba(5,8,11,.72));
+}
+body[data-view="client"] footer{
+  background:rgba(4,7,9,.82);
+  backdrop-filter:blur(10px);
+}
+
+/* Cleaner login gate */
+.private-shell-client .private-welcome{
+  margin:2px 0 22px;
+}
+.private-shell-client .private-copy,
+.private-shell-client h1{
+  display:none;
+}
