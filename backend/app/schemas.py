@@ -10,8 +10,20 @@ class OrderItemIn(BaseModel):
     quantity: int = Field(ge=1, le=99)
 
 class OrderCreate(BaseModel):
-    customer_name: str = Field(min_length=2, max_length=120)
     items: list[OrderItemIn] = Field(min_length=1)
+
+class ClientLogin(BaseModel):
+    username: str = Field(min_length=2, max_length=80)
+    phone: str = Field(min_length=6, max_length=32)
+
+class ClientCreate(BaseModel):
+    username: str = Field(min_length=2, max_length=80)
+    phone: str = Field(min_length=6, max_length=32)
+
+class ClientPatch(BaseModel):
+    username: str | None = Field(default=None, min_length=2, max_length=80)
+    phone: str | None = Field(default=None, min_length=6, max_length=32)
+    active: bool | None = None
 
 class AdminLogin(BaseModel):
     username: str
