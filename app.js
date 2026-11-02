@@ -15,7 +15,33 @@ const LIQUID_LINE_IMAGES={
 const ars=n=>new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:0}).format(Number(n||0));
 const esc=s=>String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 function safeJSON(key,fallback){try{return JSON.parse(localStorage.getItem(key)||JSON.stringify(fallback))}catch{localStorage.removeItem(key);return fallback}}
-let catalog=null, cart=safeJSON('vv-cart',[]), editingOrderToken=sessionStorage.getItem('vv-edit-order-token')||'', editingOrderNumber=sessionStorage.getItem('vv-edit-order-number')||'', adminToken=sessionStorage.getItem('vv-admin')||'', clientToken=localStorage.getItem('vv-client')||'', clientProfile=safeJSON('vv-client-profile',null);
+let catalog=null, editingOrderToken=sessionStorage.getItem('vv-edit-order-token')||'', editingOrderNumber=sessionStorage.getItem('vv-edit-order-number')||'', adminToken=sessionStorage.getItem('vv-admin')||'', clientToken=localStorage.getItem('vv-client')||'', clientProfile=safeJSON('vv-client-profile',null), cart=[];
+function clientCartKey(profile=clientProfile){return profile?.id?`vv-cart-client-${profile.id}`:'vv-cart'}
+function loadClientCart(profile=clientProfile){
+  const key=clientCartKey(profile);
+  let stored=safeJSON(key,[]);
+  if(profile?.id&&!stored.length){
+    const legacy=safeJSON('vv-cart',[]);
+    if(legacy.length){stored=legacy;localStorage.setItem(key,JSON.stringify(legacy));localStorage.removeItem('vv-cart')}
+  }
+  return stored;
+}
+function clearEditSession(){
+  editingOrderToken='';editingOrderNumber='';
+  sessionStorage.removeItem('vv-edit-order-token');
+  sessionStorage.removeItem('vv-edit-order-number');
+  sessionStorage.removeItem('vv-edit-order-cart');
+  sessionStorage.removeItem('vv-edit-cart-backup');
+}
+function restoreNormalCart(){
+  const backup=sessionStorage.getItem('vv-edit-cart-backup');
+  clearEditSession();
+  cart=backup?JSON.parse(backup):loadClientCart();
+  saveCart();
+  updateCartCount();
+}
+cart=editingOrderToken?safeJSONSession('vv-edit-order-cart',[]):loadClientCart();
+function safeJSONSession(key,fallback){try{return JSON.parse(sessionStorage.getItem(key)||JSON.stringify(fallback))}catch{sessionStorage.removeItem(key);return fallback}}
 function toast(t){const el=document.querySelector('#toast');el.textContent=t;el.classList.remove('hidden');setTimeout(()=>el.classList.add('hidden'),2200)}
 async function forceRefresh(){try{if('caches' in window){for(const k of await caches.keys())await caches.delete(k)}}catch{}const u=new URL(location.href);u.searchParams.set('_refresh',Date.now());location.replace(u.toString())}
 async function req(path,opt={}){const headers={'Content-Type':'application/json',...(opt.headers||{})};if(clientToken&&!headers.Authorization&&!path.startsWith('/admin/')&&!path.startsWith('/client/login'))headers.Authorization='Bearer '+clientToken;const r=await fetch(API+path,{...opt,headers,cache:'no-store'});if(!r.ok){let j={};try{j=await r.json()}catch{}if(r.status===401&&clientToken&&!path.startsWith('/admin/')&&!path.startsWith('/client/login')){clientLogout(false)}throw new Error(j.detail||'Error de comunicación')}return (r.headers.get('content-type')||'').includes('json')?r.json():r.text()}
@@ -23,14 +49,25 @@ function header(admin=false){return `<header class="topbar"><button class="brand
 function footer(){return `<footer><span>ᚠ ᚢ ᚦ ᚨ ᚱ ᚲ</span><p>Valhalla Vape · Solo para mayores de edad</p><a class="jarl-footer-link" href="#admin">ᛉ Acceder al Salón del Jarl</a></footer>`}
 function privateWelcome(message=''){viewMode('private');document.title='Acceso privado';catalog=null;document.querySelector('#app').innerHTML=`<main class="private-gate branded-gate"><div class="private-bg neutral-bg"></div><div class="private-overlay"></div><section class="private-shell private-shell-client"><img class="private-brand-mark" src="${LOGO}" alt="" onerror="this.style.display='none';document.querySelector('.private-bg')?.classList.add('brand-fallback')"><p class="private-kicker private-welcome">QUÉ BUENO VERTE</p>${message?`<div class="private-error">${esc(message)}</div>`:''}<label>Usuario<input id="clientUser" autocomplete="username" placeholder="Usuario"></label><label>Número de teléfono<input id="clientPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="Teléfono"></label><button class="btn primary full" onclick="doClientLogin()">Ingresar</button><a class="management-entry" href="#admin">Acceso de gestión</a></section></main>`;applyGateBrand();const u=document.querySelector('#clientUser');if(u)u.focus()}
 function applyGateBrand(){const bg=document.querySelector('.private-bg');if(!bg||!BRAND_BG)return;const img=new Image();img.onload=()=>{bg.style.backgroundImage=`url("${BRAND_BG}")`;bg.classList.remove('neutral-bg')};img.onerror=()=>bg.classList.add('brand-fallback');img.src=BRAND_BG}
-async function doClientLogin(){const username=document.querySelector('#clientUser')?.value.trim()||'',phone=document.querySelector('#clientPhone')?.value.trim()||'';if(username.length<2||phone.length<6)return toast('Completá usuario y teléfono');try{const r=await req('/client/login',{method:'POST',body:JSON.stringify({username,phone})});clientToken=r.token;clientProfile=r.client;localStorage.setItem('vv-client',clientToken);localStorage.setItem('vv-client-profile',JSON.stringify(clientProfile));if(localStorage.getItem('vv-age-ok')==='1')shop();else showAgeGate()}catch(e){privateWelcome(e.message)}}
-function clientLogout(render=true){clientToken='';clientProfile=null;catalog=null;cart=[];localStorage.removeItem('vv-client');localStorage.removeItem('vv-client-profile');localStorage.removeItem('vv-cart');if(render){location.hash='';privateWelcome()}}
+async function doClientLogin(){const username=document.querySelector('#clientUser')?.value.trim()||'',phone=document.querySelector('#clientPhone')?.value.trim()||'';if(username.length<2||phone.length<6)return toast('Completá usuario y teléfono');try{const r=await req('/client/login',{method:'POST',body:JSON.stringify({username,phone})});clientToken=r.token;clientProfile=r.client;localStorage.setItem('vv-client',clientToken);localStorage.setItem('vv-client-profile',JSON.stringify(clientProfile));if(!editingOrderToken)cart=loadClientCart(clientProfile);updateCartCount();if(localStorage.getItem('vv-age-ok')==='1')shop();else showAgeGate()}catch(e){privateWelcome(e.message)}}
+function clientLogout(render=true){
+  if(editingOrderToken){
+    const backup=sessionStorage.getItem('vv-edit-cart-backup');
+    clearEditSession();
+    cart=backup?JSON.parse(backup):loadClientCart();
+    localStorage.setItem(clientCartKey(),JSON.stringify(cart));
+  }else saveCart();
+  clientToken='';clientProfile=null;catalog=null;cart=[];
+  localStorage.removeItem('vv-client');
+  localStorage.removeItem('vv-client-profile');
+  if(render){location.hash='';privateWelcome()}
+}
 function showAgeGate(){document.body.insertAdjacentHTML('beforeend',`<div id="age" class="age-gate"><div class="age-card rune-frame"><img class="logo-img" src="${LOGO}" alt="Valhalla Vape"><p class="eyebrow">ACCESO RESTRINGIDO</p><h1>¿Sos mayor de edad?</h1><p>Este catálogo contiene productos de vapeo y nicotina. El acceso es exclusivo para adultos.</p><button class="btn primary" onclick="acceptAge()">Sí, soy mayor de edad</button><button class="btn ghost" onclick="clientLogout()">Salir</button></div></div>`)}
 function acceptAge(){localStorage.setItem('vv-age-ok','1');document.querySelector('#age')?.remove();shop()}
 function tierTotal(p,q){let left=q,total=0,tiers=[...(p.price_tiers||[])].sort((a,b)=>b.qty-a.qty);if(!tiers.length)return p.sale*q;for(const t of tiers){let n=Math.floor(left/t.qty);total+=n*t.total;left-=n*t.qty}return total+left*p.sale}
 async function loadCatalog(){if(catalog)return catalog;catalog=await req('/catalog');return catalog}
 function clientOrdersSection(orders=[]){return `<section class="client-orders-section"><div class="client-orders-head"><div><p class="eyebrow">SEGUIMIENTO</p><h2>Mis pedidos</h2></div><button class="btn ghost compact" onclick="shop()">Actualizar</button></div>${orders.length?`<div class="client-orders-grid">${orders.slice(0,6).map(o=>`<button class="client-order-card" onclick="location.hash='pedido=${o.public_token}'"><div class="client-order-top"><div><b>${esc(o.number)}</b><small>${new Date(o.created_at).toLocaleString('es-AR')}</small></div><span class="status-badge s-${o.status}">${esc(o.status_label)}</span></div><div class="client-order-bottom"><span>${o.items.reduce((s,i)=>s+i.quantity,0)} ítems</span><strong>${ars(o.total)}</strong></div></button>`).join('')}</div>`:'<div class="client-orders-empty">Todavía no tenés pedidos.</div>'}</section>`}
-function saveCart(){localStorage.setItem('vv-cart',JSON.stringify(cart));}
+function saveCart(){if(editingOrderToken)sessionStorage.setItem('vv-edit-order-cart',JSON.stringify(cart));else localStorage.setItem(clientCartKey(),JSON.stringify(cart));}
 function updateCartCount(){const i=document.querySelector('.top-actions .icon-btn i');if(i)i.textContent=String(cart.reduce((s,x)=>s+x.quantity,0))}
 function flavorNorm(v){return String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim()}
 function flavorDescription(slug,name){return FLAVOR_DESCRIPTIONS?.[slug]?.[name]||''}
@@ -95,8 +132,8 @@ function removeCartItem(i){cart.splice(i,1);saveCart();document.querySelector('#
 function showCart(){let total=cart.reduce((s,x)=>s+x.line_total,0),html=`<div class="modal-scrim" id="cartModal"><div class="batch-modal rune-frame"><button class="modal-close" onclick="document.querySelector('#cartModal').remove()">✕</button><p class="eyebrow">${editingOrderToken?'EDITANDO PEDIDO':'TU PEDIDO'}</p><h2>Carrito</h2>${editingOrderToken?`<div class="notice edit-notice">Estás modificando el pedido <b>${esc(editingOrderNumber)}</b>. Los cambios se aplican al guardar.</div><button class="btn danger full delete-order-btn" onclick="deleteOrder('${editingOrderToken}')">Eliminar pedido</button>`:''}${cart.length?cart.map((x,i)=>`<div class="cart-item cart-item-editable" id="cart-row-${i}"><div class="cart-item-main"><div><b>${x.quantity}× ${esc(x.name)}</b><small>${ars(x.line_total)}</small></div><div class="cart-item-actions"><button class="link-btn" onclick="editCartItem(${i})">Editar</button><button class="link-btn danger" onclick="removeCartItem(${i})">Quitar</button></div></div><div class="cart-edit-slot"></div></div>`).join(''):'<p class="muted">Todavía no agregaste productos.</p>'}<div class="total-line"><span>Subtotal</span><strong>${ars(total)}</strong></div><p class="muted">El envío se agrega después de revisar el pedido.</p><button class="btn primary full" ${cart.length?'':'disabled'} onclick="location.hash='checkout';document.querySelector('#cartModal').remove()">${editingOrderToken?'Revisar cambios':'Continuar'}</button></div></div>`;document.body.insertAdjacentHTML('beforeend',html)}
 function checkout(){if(!clientToken)return privateWelcome();let total=cart.reduce((s,x)=>s+x.line_total,0);document.querySelector('#app').innerHTML=header()+`<main class="narrow"><section class="checkout-card rune-frame"><p class="eyebrow">${editingOrderToken?'EDITAR PEDIDO':'CONFIRMAR PEDIDO'}</p><h1>${editingOrderToken?esc(editingOrderNumber):'Pedido de '+esc(clientProfile?.username||'cliente')}</h1><p class="muted">${editingOrderToken?'Revisá los cambios antes de guardarlos. Podés modificar el pedido hasta que sea enviado al proveedor.':'No transfieras todavía. Primero revisamos disponibilidad y cargamos el envío.'}</p><div class="order-review">${cart.map(x=>`<div><span>${x.quantity}× ${esc(x.name)}</span><b>${ars(x.line_total)}</b></div>`).join('')}</div><div class="total-line"><span>Subtotal</span><strong>${ars(total)}</strong></div><button class="btn primary full" onclick="sendOrder()">${editingOrderToken?'Guardar cambios':'Enviar pedido'}</button>${editingOrderToken?'<button class="btn ghost full order-edit-cancel" onclick="cancelOrderEdit()">Cancelar edición</button>':''}</section></main>`}
 function orderPayload(){return {items:cart.map(x=>({kind:x.kind,reference_id:x.reference_id,line_slug:x.line_slug,flavor:x.flavor,size_ml:x.size_ml,nicotine_mg:x.nicotine_mg,quantity:x.quantity}))}}
-async function sendOrder(){if(!clientToken)return privateWelcome();try{const editToken=editingOrderToken;let o=await req(editToken?'/orders/public/'+editToken:'/orders',{method:editToken?'PUT':'POST',body:JSON.stringify(orderPayload())});cart=[];localStorage.removeItem('vv-cart');editingOrderToken='';editingOrderNumber='';sessionStorage.removeItem('vv-edit-order-token');sessionStorage.removeItem('vv-edit-order-number');location.hash='pedido='+o.public_token}catch(e){toast(e.message)}}
-function cancelOrderEdit(){const token=editingOrderToken;editingOrderToken='';editingOrderNumber='';sessionStorage.removeItem('vv-edit-order-token');sessionStorage.removeItem('vv-edit-order-number');cart=[];localStorage.removeItem('vv-cart');if(token)location.hash='pedido='+token;else location.hash=''}
+async function sendOrder(){if(!clientToken)return privateWelcome();try{const editToken=editingOrderToken;let o=await req(editToken?'/orders/public/'+editToken:'/orders',{method:editToken?'PUT':'POST',body:JSON.stringify(orderPayload())});if(editToken){restoreNormalCart()}else{cart=[];localStorage.removeItem(clientCartKey());updateCartCount()}location.hash='pedido='+o.public_token}catch(e){toast(e.message)}}
+function cancelOrderEdit(){const token=editingOrderToken;restoreNormalCart();if(token)location.hash='pedido='+token;else location.hash=''}
 async function startOrderEdit(token){
   try{
     const [o]=await Promise.all([req('/orders/public/'+token),loadCatalog()]);
@@ -112,14 +149,14 @@ async function startOrderEdit(token){
       }
     }
     if(!rebuilt.length){toast('No se pudieron cargar los productos del pedido');return}
-    cart=rebuilt;saveCart();updateCartCount();editingOrderToken=token;editingOrderNumber=o.number;sessionStorage.setItem('vv-edit-order-token',token);sessionStorage.setItem('vv-edit-order-number',o.number);location.hash='';setTimeout(()=>showCart(),120);
+    sessionStorage.setItem('vv-edit-cart-backup',JSON.stringify(cart));editingOrderToken=token;editingOrderNumber=o.number;sessionStorage.setItem('vv-edit-order-token',token);sessionStorage.setItem('vv-edit-order-number',o.number);cart=rebuilt;saveCart();updateCartCount();location.hash='';setTimeout(()=>showCart(),120);
   }catch(e){toast(e.message)}
 }
 async function deleteOrder(token){
   if(!confirm('¿Eliminar este pedido? Esta acción lo quitará de Mis pedidos.'))return;
   try{
     await req('/orders/public/'+token,{method:'DELETE'});
-    if(editingOrderToken===token){editingOrderToken='';editingOrderNumber='';sessionStorage.removeItem('vv-edit-order-token');sessionStorage.removeItem('vv-edit-order-number');cart=[];localStorage.removeItem('vv-cart');updateCartCount()}
+    if(editingOrderToken===token)restoreNormalCart()
     toast('Pedido eliminado');
     location.hash='';
   }catch(e){toast(e.message)}
