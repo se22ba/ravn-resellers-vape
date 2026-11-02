@@ -66,7 +66,7 @@ linear-gradient(180deg,#07090c 0%,#0a0e12 48%,#07090c 100%)}
 
 /* Valhalla V1.3 — dramatic gate + admin catalog */
 .branded-gate{position:relative;isolation:isolate;overflow:hidden;display:flex;align-items:center;justify-content:flex-end;padding:32px 7vw;min-height:100vh;background:#05070a}
-.private-bg{position:absolute;z-index:-3;inset:0;background-size:cover;background-repeat:no-repeat;background-position:center center;transform:scale(1.025);filter:contrast(1.08) saturate(.8) brightness(.78)}
+.private-bg{position:absolute;z-index:-3;inset:0;background-color:#05070a;background-size:min(58vw,1000px) auto;background-repeat:no-repeat;background-position:8% center;transform:scale(1.01);filter:contrast(1.08) saturate(.78) brightness(.82)}
 .private-overlay{position:absolute;z-index:-2;inset:0;background:
 linear-gradient(90deg,rgba(3,5,7,.12) 0%,rgba(3,5,7,.25) 38%,rgba(3,5,7,.76) 68%,rgba(3,5,7,.94) 100%),
 linear-gradient(180deg,rgba(3,5,7,.16),rgba(3,5,7,.68));
@@ -158,3 +158,5 @@ linear-gradient(180deg,rgba(3,5,7,.12),rgba(3,5,7,.7))}
   position:absolute;left:18%;top:50%;transform:translate(-50%,-50%);
   font-family:Cinzel,serif;font-size:clamp(180px,26vw,520px);color:rgba(185,157,99,.055);
 }
+
+@media(max-width:760px){.branded-gate{justify-content:center;padding:18px}.private-bg{background-size:cover;background-position:center 30%;filter:contrast(1.08) saturate(.75) brightness(.55)}.private-overlay{background:linear-gradient(180deg,rgba(3,5,7,.38) 0%,rgba(3,5,7,.7) 48%,rgba(3,5,7,.92) 100%)}}
