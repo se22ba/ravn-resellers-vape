@@ -160,3 +160,21 @@ linear-gradient(180deg,rgba(3,5,7,.12),rgba(3,5,7,.7))}
 }
 
 @media(max-width:760px){.branded-gate{justify-content:center;padding:18px}.private-bg{background-size:cover;background-position:center 30%;filter:contrast(1.08) saturate(.75) brightness(.55)}.private-overlay{background:linear-gradient(180deg,rgba(3,5,7,.38) 0%,rgba(3,5,7,.7) 48%,rgba(3,5,7,.92) 100%)}}
+
+/* Client order history */
+.client-orders-section{max-width:1180px;margin:0 auto;padding:22px 12px 6px}
+.client-orders-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;margin-bottom:12px}
+.client-orders-head h2{margin:0;font-size:24px}
+.client-orders-grid{display:grid;grid-template-columns:1fr;gap:10px}
+.client-order-card{width:100%;text-align:left;border:1px solid var(--line);border-radius:14px;background:linear-gradient(160deg,#141a1f,#0b0f12);color:var(--text);padding:13px;box-shadow:0 10px 24px #0003}
+.client-order-card:hover{border-color:#8e774f;transform:translateY(-1px)}
+.client-order-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.client-order-top>div{display:flex;flex-direction:column;gap:4px;min-width:0}
+.client-order-top b{font-family:Cinzel,serif;font-size:13px}
+.client-order-top small{font-size:11px;color:var(--muted)}
+.client-order-card .status-badge{margin:0;white-space:nowrap;font-size:11px}
+.client-order-bottom{display:flex;justify-content:space-between;align-items:center;margin-top:11px;padding-top:10px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+.client-order-bottom strong{color:var(--bronze2);font-size:14px}
+.client-orders-empty{padding:18px;border:1px dashed var(--line);border-radius:14px;color:var(--muted);font-size:12px;background:#0a0e12}
+@media(min-width:700px){.client-orders-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(min-width:1050px){.client-orders-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
