@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     db_schema: str = "valhalla"
     admin_username: str = "spafundi"
     admin_password: str = ""
+    admin2_username: str = ""
+    admin2_password: str = ""
     jwt_secret: str = ""
     cors_origins: str = "http://localhost:5173"
     payment_alias: str = "se22ba.mercadopago"
