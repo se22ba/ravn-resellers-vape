@@ -14,6 +14,7 @@ class OrderCreate(BaseModel):
     items: list[OrderItemIn] = Field(min_length=1)
 
 class AdminLogin(BaseModel):
+    username: str
     password: str
 
 class OrderAdminPatch(BaseModel):
