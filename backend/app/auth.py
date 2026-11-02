@@ -22,10 +22,12 @@ def _assert_admin_configured():
 
 def login(username: str, password: str) -> str:
     _assert_admin_configured()
-    if not secrets.compare_digest(username, settings.admin_username) or not secrets.compare_digest(password, settings.admin_password):
+    primary = secrets.compare_digest(username, settings.admin_username) and secrets.compare_digest(password, settings.admin_password)
+    secondary = bool(settings.admin2_username and settings.admin2_password) and secrets.compare_digest(username, settings.admin2_username) and secrets.compare_digest(password, settings.admin2_password)
+    if not (primary or secondary):
         raise HTTPException(status_code=401, detail="Credenciales inválidas")
     now = datetime.now(timezone.utc)
-    return jwt.encode({"sub":"admin","kind":"admin","iat":now,"exp":now+timedelta(hours=12)}, settings.jwt_secret, algorithm="HS256")
+    return jwt.encode({"sub":"admin","kind":"admin","username":username,"iat":now,"exp":now+timedelta(hours=12)}, settings.jwt_secret, algorithm="HS256")
 
 def require_admin(authorization: str | None = Header(default=None)):
     _assert_admin_configured()
