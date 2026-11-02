@@ -5,15 +5,25 @@ from fastapi import FastAPI, Depends, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from .config import get_settings
 from .db import Base, engine, get_db, SessionLocal
-from .models import LiquidLine, LiquidPrice, LiquidFlavor, Product, Order, OrderItem, OrderEvent, SupplierBatch
-from .schemas import OrderCreate, AdminLogin, OrderAdminPatch, BatchCreate
+from .models import (
+    LiquidLine, LiquidPrice, LiquidFlavor, Product, Order, OrderItem, OrderEvent,
+    SupplierBatch, ClientAccess, OrderClientAccess
+)
+from .schemas import (
+    OrderCreate, ClientLogin, ClientCreate, ClientPatch,
+    AdminLogin, OrderAdminPatch, BatchCreate
+)
 from .seed import seed
-from .auth import login, require_admin
+from .auth import (
+    login, require_admin, login_client, require_client,
+    normalize_username, normalize_phone
+)
 
 settings = get_settings()
-app = FastAPI(title=settings.app_name, version="1.0.0")
+app = FastAPI(title=settings.app_name, version="1.1.0")
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_list, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 STATUSES = ["received","reviewed","awaiting_payment","paid","supplier_ordered","supplier_received","ready","delivered","cancelled"]
@@ -61,6 +71,14 @@ def order_view(order: Order, public=False):
         data["payment"]={"alias":settings.payment_alias,"holder":settings.payment_holder,"cvu":settings.payment_cvu}
     return data
 
+def ensure_client_order(db: Session, order: Order, client: dict):
+    link = db.query(OrderClientAccess).filter(
+        OrderClientAccess.order_id == order.id,
+        OrderClientAccess.client_id == client["id"]
+    ).first()
+    if not link:
+        raise HTTPException(403, "Este pedido no pertenece a tu cuenta")
+
 @app.on_event("startup")
 def startup():
     if engine.dialect.name == "postgresql" and settings.db_schema:
@@ -75,8 +93,16 @@ def startup():
 @app.get("/api/health")
 def health(): return {"ok":True,"service":settings.app_name}
 
+@app.post("/api/client/login")
+def client_login(payload: ClientLogin, db: Session=Depends(get_db)):
+    return login_client(payload.username, payload.phone, db)
+
+@app.get("/api/client/me")
+def client_me(client: dict=Depends(require_client)):
+    return {"id":client["id"],"username":client["username"]}
+
 @app.get("/api/catalog")
-def catalog(db: Session=Depends(get_db)):
+def catalog(client: dict=Depends(require_client), db: Session=Depends(get_db)):
     lines=db.query(LiquidLine).options(joinedload(LiquidLine.flavors),joinedload(LiquidLine.prices)).filter(LiquidLine.active==True).all()
     products=db.query(Product).filter(Product.active==True).order_by(Product.category,Product.sort_order).all()
     return {
@@ -88,9 +114,10 @@ def catalog(db: Session=Depends(get_db)):
     }
 
 @app.post("/api/orders")
-def create_order(payload: OrderCreate, db: Session=Depends(get_db)):
-    order=Order(number="TEMP",customer_name=payload.customer_name.strip(),status="received")
+def create_order(payload: OrderCreate, client: dict=Depends(require_client), db: Session=Depends(get_db)):
+    order=Order(number="TEMP",customer_name=client["username"],status="received")
     db.add(order); db.flush(); order.number=f"VV-{datetime.utcnow():%y%m%d}-{order.id:04d}"
+    db.add(OrderClientAccess(order_id=order.id, client_id=client["id"]))
     for it in payload.items:
         if it.kind=="liquid":
             line=db.query(LiquidLine).filter(LiquidLine.slug==it.line_slug,LiquidLine.active==True).first()
@@ -114,21 +141,23 @@ def create_order(payload: OrderCreate, db: Session=Depends(get_db)):
             db.add(OrderItem(order_id=order.id,kind="product",reference_id=p.id,snapshot_name=p.name,quantity=it.quantity,
                 unit_cost=unit,unit_sale=unit,line_total_cost=total_c,line_total_sale=total_s))
         else: raise HTTPException(400,"Tipo de item no válido")
-    db.add(OrderEvent(order_id=order.id,event_type="created",detail="Pedido recibido desde la web"))
+    db.add(OrderEvent(order_id=order.id,event_type="created",detail=f"Pedido recibido desde la cuenta {client['username']}"))
     db.commit()
     order=db.query(Order).options(joinedload(Order.items),joinedload(Order.events)).filter(Order.id==order.id).first()
     return order_view(order,public=True)
 
 @app.get("/api/orders/public/{token}")
-def public_order(token: str, db: Session=Depends(get_db)):
+def public_order(token: str, client: dict=Depends(require_client), db: Session=Depends(get_db)):
     order=db.query(Order).options(joinedload(Order.items),joinedload(Order.events)).filter(Order.public_token==token).first()
     if not order: raise HTTPException(404,"Pedido no encontrado")
+    ensure_client_order(db,order,client)
     return order_view(order,public=True)
 
 @app.post("/api/orders/public/{token}/payment-reported")
-def payment_reported(token: str, db: Session=Depends(get_db)):
+def payment_reported(token: str, client: dict=Depends(require_client), db: Session=Depends(get_db)):
     order=db.query(Order).filter(Order.public_token==token).first()
     if not order: raise HTTPException(404,"Pedido no encontrado")
+    ensure_client_order(db,order,client)
     if order.status!="awaiting_payment": raise HTTPException(400,"El pedido todavía no está esperando pago")
     order.payment_reported_at=datetime.utcnow()
     db.add(OrderEvent(order_id=order.id,event_type="payment_reported",detail="El cliente informó que realizó la transferencia"))
@@ -136,6 +165,42 @@ def payment_reported(token: str, db: Session=Depends(get_db)):
 
 @app.post("/api/admin/login")
 def admin_login(payload: AdminLogin): return {"token":login(payload.username, payload.password)}
+
+@app.get("/api/admin/clients",dependencies=[Depends(require_admin)])
+def admin_clients(db: Session=Depends(get_db)):
+    rows=db.query(ClientAccess).order_by(ClientAccess.username).all()
+    return [{"id":c.id,"username":c.username,"phone":c.phone,"active":c.active,"created_at":c.created_at.isoformat()} for c in rows]
+
+@app.post("/api/admin/clients",dependencies=[Depends(require_admin)])
+def admin_create_client(payload: ClientCreate, db: Session=Depends(get_db)):
+    username=normalize_username(payload.username)
+    phone=normalize_phone(payload.phone)
+    if len(phone)<6: raise HTTPException(400,"Número de teléfono inválido")
+    client=ClientAccess(username=username,phone=phone,active=True)
+    db.add(client)
+    try:
+        db.commit(); db.refresh(client)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409,"El usuario o teléfono ya está registrado")
+    return {"id":client.id,"username":client.username,"phone":client.phone,"active":client.active}
+
+@app.patch("/api/admin/clients/{client_id}",dependencies=[Depends(require_admin)])
+def admin_patch_client(client_id:int,payload:ClientPatch,db:Session=Depends(get_db)):
+    client=db.get(ClientAccess,client_id)
+    if not client: raise HTTPException(404,"Cliente no encontrado")
+    if payload.username is not None: client.username=normalize_username(payload.username)
+    if payload.phone is not None:
+        phone=normalize_phone(payload.phone)
+        if len(phone)<6: raise HTTPException(400,"Número de teléfono inválido")
+        client.phone=phone
+    if payload.active is not None: client.active=payload.active
+    try:
+        db.commit(); db.refresh(client)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409,"El usuario o teléfono ya está registrado")
+    return {"id":client.id,"username":client.username,"phone":client.phone,"active":client.active}
 
 @app.get("/api/admin/orders",dependencies=[Depends(require_admin)])
 def admin_orders(db: Session=Depends(get_db)):
@@ -148,7 +213,7 @@ def patch_order(order_id:int,payload:OrderAdminPatch,db:Session=Depends(get_db))
     if not order: raise HTTPException(404,"Pedido no encontrado")
     if payload.shipping is not None and float(order.shipping)!=payload.shipping:
         order.shipping=payload.shipping
-        db.add(OrderEvent(order_id=order.id,event_type="shipping_changed",detail=f"Envío actualizado a ${payload.shipping:,.0f}"))
+        db.add(OrderEvent(order_id=order.id,event_type="shipping_changed",detail=f"Envío actualizado a ARS {payload.shipping:,.0f}"))
     if payload.status is not None:
         if payload.status not in STATUSES: raise HTTPException(400,"Estado inválido")
         if payload.status!=order.status:
