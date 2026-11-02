@@ -131,7 +131,7 @@ def payment_reported(token: str, db: Session=Depends(get_db)):
     db.commit(); return {"ok":True}
 
 @app.post("/api/admin/login")
-def admin_login(payload: AdminLogin): return {"token":login(payload.password)}
+def admin_login(payload: AdminLogin): return {"token":login(payload.username, payload.password)}
 
 @app.get("/api/admin/orders",dependencies=[Depends(require_admin)])
 def admin_orders(db: Session=Depends(get_db)):
