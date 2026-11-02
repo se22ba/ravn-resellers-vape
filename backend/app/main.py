@@ -101,6 +101,16 @@ def client_login(payload: ClientLogin, db: Session=Depends(get_db)):
 def client_me(client: dict=Depends(require_client)):
     return {"id":client["id"],"username":client["username"]}
 
+@app.get("/api/client/orders")
+def client_orders(client: dict=Depends(require_client), db: Session=Depends(get_db)):
+    orders=(db.query(Order)
+        .join(OrderClientAccess, OrderClientAccess.order_id == Order.id)
+        .options(joinedload(Order.items), joinedload(Order.events))
+        .filter(OrderClientAccess.client_id == client["id"])
+        .order_by(Order.created_at.desc())
+        .all())
+    return [order_view(order, public=True) for order in orders]
+
 @app.get("/api/catalog")
 def catalog(client: dict=Depends(require_client), db: Session=Depends(get_db)):
     lines=db.query(LiquidLine).options(joinedload(LiquidLine.flavors),joinedload(LiquidLine.prices)).filter(LiquidLine.active==True).all()
