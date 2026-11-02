@@ -1,7 +1,7 @@
 from sqlalchemy.orm import Session
 from .models import LiquidLine, LiquidFlavor, LiquidPrice, Product
 
-FREEBASE_NICO = [0, 3, 6]  # Provisional hasta confirmar todos los MG ofrecidos por Anubis.
+FREEBASE_NICO = [0, 3, 6, 9, 12]
 
 LIQUIDS = {
     "tradicional": {"name":"Tradicional","nico":FREEBASE_NICO,"prices":[(30,2900,5500),(60,5050,9200),(120,9200,15500),(250,15500,28000)],"flavors":[
@@ -45,15 +45,47 @@ PRODUCTS = [
 ]
 
 def seed(db: Session):
-    if db.query(LiquidLine).count() == 0:
-        for slug, data in LIQUIDS.items():
-            line = LiquidLine(slug=slug, name=data["name"], nicotine_options=data["nico"])
-            db.add(line); db.flush()
-            for flavor in data["flavors"]:
-                db.add(LiquidFlavor(line_id=line.id, name=flavor))
-            for size, cost, sale in data["prices"]:
-                db.add(LiquidPrice(line_id=line.id, size_ml=size, cost=cost, sale=sale))
-    if db.query(Product).count() == 0:
-        for idx, (sku, name, category, price, image_url, tiers) in enumerate(PRODUCTS):
-            db.add(Product(sku=sku, name=name, category=category, cost=price, sale=price, image_url=image_url, price_tiers=tiers, sort_order=idx))
+    # Upsert para que cambios de catálogo/configuración se reflejen también
+    # en bases ya inicializadas sin reescribir pedidos históricos.
+    for slug, data in LIQUIDS.items():
+        line = db.query(LiquidLine).filter(LiquidLine.slug == slug).first()
+        if not line:
+            line = LiquidLine(slug=slug)
+            db.add(line)
+            db.flush()
+        line.name = data["name"]
+        line.nicotine_options = data["nico"]
+        line.active = True
+
+        existing_flavors = {f.name: f for f in line.flavors}
+        for flavor_name in data["flavors"]:
+            flavor = existing_flavors.get(flavor_name)
+            if not flavor:
+                flavor = LiquidFlavor(line_id=line.id, name=flavor_name)
+                db.add(flavor)
+            flavor.active = True
+
+        existing_prices = {p.size_ml: p for p in line.prices}
+        for size, cost, sale in data["prices"]:
+            price = existing_prices.get(size)
+            if not price:
+                price = LiquidPrice(line_id=line.id, size_ml=size)
+                db.add(price)
+            price.cost = cost
+            price.sale = sale
+
+    for idx, (sku, name, category, price, image_url, tiers) in enumerate(PRODUCTS):
+        product = db.query(Product).filter(Product.sku == sku).first()
+        if not product:
+            product = Product(sku=sku)
+            db.add(product)
+        product.name = name
+        product.category = category
+        product.cost = price
+        product.sale = price
+        product.image_url = image_url
+        product.price_tiers = tiers
+        product.active = True
+        product.sort_order = idx
+
     db.commit()
