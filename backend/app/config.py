@@ -4,10 +4,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     app_name: str = "Valhalla Vape API"
     database_url: str = "sqlite:///./ravn.db"
+    admin_username: str = "spafundi"
     admin_password: str = ""
     jwt_secret: str = ""
     cors_origins: str = "http://localhost:5173"
-    payment_alias: str = ""
+    payment_alias: str = "se22ba.mercadopago"
     payment_holder: str = ""
     payment_cvu: str = ""
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
