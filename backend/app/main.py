@@ -27,6 +27,7 @@ app = FastAPI(title="Private API", version="1.1.0", docs_url=None, redoc_url=Non
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_list, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 STATUSES = ["received","reviewed","awaiting_payment","paid","supplier_ordered","supplier_received","ready","delivered","cancelled"]
+CLIENT_EDITABLE_STATUSES = {"received","reviewed","awaiting_payment","paid"}
 STATUS_LABELS = {
     "received":"Recibido","reviewed":"Revisado","awaiting_payment":"Esperando pago","paid":"Pagado",
     "supplier_ordered":"Pedido a proveedor","supplier_received":"Recibido de proveedor",
@@ -53,10 +54,11 @@ def order_view(order: Order, public=False):
         "id": order.id, "number": order.number, "public_token": order.public_token,
         "customer_name": order.customer_name, "status": order.status,
         "status_label": STATUS_LABELS.get(order.status, order.status),
+        "editable": order.status in CLIENT_EDITABLE_STATUSES,
         "shipping": shipping, "subtotal": subtotal, "total": subtotal + shipping,
         "created_at": order.created_at.isoformat(), "updated_at": order.updated_at.isoformat(),
         "payment_reported": bool(order.payment_reported_at),
-        "items": [{"id":i.id,"kind":i.kind,"name":i.snapshot_name,"quantity":i.quantity,
+        "items": [{"id":i.id,"kind":i.kind,"reference_id":i.reference_id,"name":i.snapshot_name,"quantity":i.quantity,
             "unit_sale":money(i.unit_sale),"line_total_sale":money(i.line_total_sale),
             "line_name":i.line_name,"flavor":i.flavor,"size_ml":i.size_ml,"nicotine_mg":i.nicotine_mg}
             for i in order.items],
@@ -161,6 +163,49 @@ def public_order(token: str, client: dict=Depends(require_client), db: Session=D
     order=db.query(Order).options(joinedload(Order.items),joinedload(Order.events)).filter(Order.public_token==token).first()
     if not order: raise HTTPException(404,"Pedido no encontrado")
     ensure_client_order(db,order,client)
+    return order_view(order,public=True)
+
+@app.put("/api/orders/public/{token}")
+def edit_public_order(token: str, payload: OrderCreate, client: dict=Depends(require_client), db: Session=Depends(get_db)):
+    order=db.query(Order).options(joinedload(Order.items),joinedload(Order.events)).filter(Order.public_token==token).first()
+    if not order: raise HTTPException(404,"Pedido no encontrado")
+    ensure_client_order(db,order,client)
+    if order.status not in CLIENT_EDITABLE_STATUSES:
+        raise HTTPException(409,"El pedido ya fue enviado al proveedor y no puede modificarse")
+
+    new_items=[]
+    for it in payload.items:
+        if it.kind=="liquid":
+            line=db.query(LiquidLine).filter(LiquidLine.slug==it.line_slug,LiquidLine.active==True).first()
+            if not line or not it.flavor or it.size_ml is None or it.nicotine_mg is None:
+                raise HTTPException(400,"Líquido incompleto")
+            if it.nicotine_mg not in (line.nicotine_options or []):
+                raise HTTPException(400,"MG de nicotina no válido")
+            fl=db.query(LiquidFlavor).filter(LiquidFlavor.line_id==line.id,func.lower(LiquidFlavor.name)==it.flavor.lower(),LiquidFlavor.active==True).first()
+            price=db.query(LiquidPrice).filter(LiquidPrice.line_id==line.id,LiquidPrice.size_ml==it.size_ml).first()
+            if not fl or not price: raise HTTPException(400,"Sabor o medida no válido")
+            uc,us=money(price.cost),money(price.sale)
+            new_items.append(OrderItem(order_id=order.id,kind="liquid",reference_id=line.id,
+                snapshot_name=f"{line.name} · {fl.name} · {it.size_ml}ml · {it.nicotine_mg}mg",
+                line_name=line.name,flavor=fl.name,size_ml=it.size_ml,nicotine_mg=it.nicotine_mg,
+                quantity=it.quantity,unit_cost=uc,unit_sale=us,
+                line_total_cost=uc*it.quantity,line_total_sale=us*it.quantity))
+        elif it.kind=="product":
+            p=db.get(Product,it.reference_id)
+            if not p or not p.active: raise HTTPException(400,"Producto no válido")
+            total_s=tier_total(p,it.quantity); unit=total_s/it.quantity
+            new_items.append(OrderItem(order_id=order.id,kind="product",reference_id=p.id,
+                snapshot_name=p.name,quantity=it.quantity,unit_cost=unit,unit_sale=unit,
+                line_total_cost=total_s,line_total_sale=total_s))
+        else:
+            raise HTTPException(400,"Tipo de item no válido")
+
+    db.query(OrderItem).filter(OrderItem.order_id==order.id).delete(synchronize_session=False)
+    db.flush()
+    db.add_all(new_items)
+    db.add(OrderEvent(order_id=order.id,event_type="client_edited",detail="Pedido modificado por el cliente"))
+    db.commit()
+    order=db.query(Order).options(joinedload(Order.items),joinedload(Order.events)).filter(Order.id==order.id).first()
     return order_view(order,public=True)
 
 @app.post("/api/orders/public/{token}/payment-reported")
