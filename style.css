@@ -178,3 +178,133 @@ linear-gradient(180deg,rgba(3,5,7,.12),rgba(3,5,7,.7))}
 .client-orders-empty{padding:18px;border:1px dashed var(--line);border-radius:14px;color:var(--muted);font-size:12px;background:#0a0e12}
 @media(min-width:700px){.client-orders-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(min-width:1050px){.client-orders-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
+
+/* === Valhalla brand environment v2 === */
+body[data-view="client"]{
+  background-color:#05080b;
+  background-image:
+    linear-gradient(180deg,rgba(3,6,9,.62) 0%,rgba(3,6,9,.78) 38%,rgba(3,6,9,.88) 100%),
+    var(--brand-bg);
+  background-size:cover;
+  background-position:center top;
+  background-repeat:no-repeat;
+  background-attachment:fixed;
+}
+body[data-view="admin"]{
+  background-color:#05080b;
+  background-image:
+    linear-gradient(180deg,rgba(3,6,9,.88),rgba(3,6,9,.95)),
+    var(--brand-bg);
+  background-size:cover;
+  background-position:center top;
+  background-repeat:no-repeat;
+  background-attachment:fixed;
+}
+body[data-view="private"]{background:#030609}
+
+.topbar{
+  background:rgba(5,8,11,.82);
+  border-bottom:1px solid rgba(199,169,105,.14);
+  box-shadow:0 8px 34px rgba(0,0,0,.28);
+}
+.brand img{
+  width:50px;height:50px;
+  border-radius:12px;
+  object-fit:cover;
+  object-position:center;
+  border:1px solid rgba(204,174,111,.35);
+  box-shadow:0 0 22px rgba(188,154,86,.10);
+}
+
+.hero{
+  min-height:520px;
+  background:transparent;
+}
+.hero>img{
+  object-position:center 38%;
+  filter:contrast(1.07) saturate(.76) brightness(.80);
+}
+.hero-overlay{
+  background:
+    linear-gradient(180deg,rgba(3,5,7,.05) 0%,rgba(3,5,7,.34) 45%,rgba(3,5,7,.90) 93%,rgba(3,5,7,.98) 100%),
+    linear-gradient(90deg,rgba(3,5,7,.68) 0%,rgba(3,5,7,.20) 52%,rgba(3,5,7,.40) 100%);
+}
+.hero-copy{padding-bottom:42px}
+.hero-copy h1{text-shadow:0 5px 30px #000,0 1px 0 #000}
+
+body[data-view="client"] .client-orders-section,
+body[data-view="client"] .section{
+  position:relative;
+}
+body[data-view="client"] .pill-tabs{
+  background:rgba(6,9,12,.84);
+  border-bottom-color:rgba(196,166,103,.12);
+}
+body[data-view="client"] footer{
+  background:rgba(4,7,9,.86);
+  backdrop-filter:blur(10px);
+}
+
+.branded-gate{
+  background:#030609;
+}
+.private-bg{
+  background-size:cover !important;
+  background-position:center center !important;
+  transform:none;
+  filter:contrast(1.07) saturate(.78) brightness(.72);
+}
+.private-overlay{
+  background:
+    radial-gradient(circle at 30% 50%,rgba(0,0,0,.04) 0 20%,rgba(0,0,0,.28) 52%,rgba(0,0,0,.74) 100%),
+    linear-gradient(90deg,rgba(2,4,6,.14) 0%,rgba(2,4,6,.26) 47%,rgba(2,4,6,.80) 75%,rgba(2,4,6,.94) 100%);
+  box-shadow:inset 0 0 190px 24px rgba(0,0,0,.74);
+}
+.private-shell{
+  background:linear-gradient(155deg,rgba(14,19,23,.84),rgba(6,9,11,.94));
+  border-color:rgba(202,170,105,.38);
+  box-shadow:0 34px 110px rgba(0,0,0,.72),inset 0 0 0 1px rgba(255,255,255,.025);
+}
+.private-brand-mark{
+  width:120px;height:120px;
+  border-radius:16px;
+  object-fit:cover;
+  object-position:center;
+  filter:contrast(1.04) saturate(.82);
+  border-color:rgba(208,177,115,.45);
+}
+body[data-view="admin"] .admin-panel{
+  background:linear-gradient(180deg,rgba(4,7,9,.28),rgba(4,7,9,.52));
+}
+body[data-view="admin"] .metrics>div,
+body[data-view="admin"] .admin-order,
+body[data-view="admin"] .client-panel,
+body[data-view="admin"] .admin-catalog-card{
+  backdrop-filter:blur(7px);
+}
+
+@media(max-width:760px){
+  body[data-view="client"],body[data-view="admin"]{
+    background-position:center top;
+    background-attachment:scroll;
+  }
+  .hero{min-height:430px}
+  .hero>img{object-position:center 28%}
+  .hero-overlay{
+    background:
+      linear-gradient(180deg,rgba(3,5,7,.18) 0%,rgba(3,5,7,.46) 50%,rgba(3,5,7,.94) 94%),
+      linear-gradient(90deg,rgba(3,5,7,.35),rgba(3,5,7,.20));
+  }
+  .branded-gate{justify-content:center;padding:18px}
+  .private-bg{
+    background-size:cover !important;
+    background-position:center top !important;
+    filter:contrast(1.07) saturate(.76) brightness(.55);
+  }
+  .private-overlay{
+    background:
+      linear-gradient(180deg,rgba(2,4,6,.30) 0%,rgba(2,4,6,.58) 48%,rgba(2,4,6,.88) 100%);
+  }
+  .private-brand-mark{width:96px;height:96px}
+}
