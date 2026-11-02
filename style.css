@@ -17,3 +17,49 @@
 .line-salts .liquid-line-art{filter:saturate(.62) contrast(1.18)}
 .line-galaxy .liquid-line-art{filter:saturate(.82) hue-rotate(195deg) contrast(1.16)}
 @media(max-width:520px){.admin-entry span{display:none}.admin-entry{min-width:44px;justify-content:center;padding:0}.liquid-line-art{width:68%;right:-12%;opacity:.36}.liquid-shade{background:linear-gradient(90deg,rgba(10,14,17,.99) 0%,rgba(10,14,17,.95) 52%,rgba(10,14,17,.5) 100%),linear-gradient(180deg,transparent,rgba(5,7,9,.7))}}
+
+/* Valhalla V1.2 — private client gate */
+.private-gate{min-height:100vh;display:grid;place-items:center;padding:22px;background:
+radial-gradient(circle at 50% 18%,rgba(83,95,105,.22),transparent 30%),
+linear-gradient(180deg,#07090c 0%,#0a0e12 48%,#07090c 100%)}
+.private-shell{position:relative;width:min(100%,430px);padding:28px 22px 24px;border:1px solid #37414a;border-radius:20px;background:linear-gradient(160deg,rgba(20,27,32,.96),rgba(9,12,15,.98));box-shadow:0 24px 70px #000a;text-align:center;overflow:hidden}
+.private-shell:before,.private-shell:after{content:"";position:absolute;pointer-events:none}
+.private-shell:before{inset:6px;border:1px solid #ffffff09;border-radius:15px}
+.private-shell:after{width:220px;height:220px;left:50%;top:-145px;transform:translateX(-50%) rotate(45deg);border:1px solid #a78b5c22}
+.private-rune{width:78px;height:78px;margin:0 auto 18px;border:1px solid #5d4f38;border-radius:50%;display:grid;place-items:center;font-family:Cinzel,serif;font-size:42px;color:#c7aa70;background:radial-gradient(circle,#1c2023,#0b0e11 70%);box-shadow:inset 0 0 28px #000,0 0 0 5px #a78b5c0b}
+.private-kicker{font-family:Cinzel,serif;font-size:11px;font-weight:800;letter-spacing:.25em;color:#bca06a;margin-bottom:8px}
+.private-shell h1{font-size:30px;margin-bottom:10px}
+.private-copy{max-width:330px;margin:0 auto 22px;color:#9aa3aa;font-size:13px;line-height:1.55}
+.private-shell label{text-align:left}
+.private-error{margin:0 0 14px;padding:10px 12px;border:1px solid #7b4545;border-radius:10px;background:#2a1517;color:#e7b1b1;font-size:12px;text-align:left}
+.management-entry{display:inline-block;margin-top:18px;color:#7f8990;font-size:11px;text-decoration:none}
+.management-entry:hover{color:#c7cdd1}
+.management-shell .private-rune{color:#9ea9b0;border-color:#45515a}
+.client-chip{max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;align-self:center;padding:7px 9px;border:1px solid #ffffff10;border-radius:20px;background:#0e1317;color:#aeb6bb;font-size:11px}
+.logout-btn{font-size:17px}
+.client-admin{margin:20px 0 24px;padding:16px;border:1px solid var(--line);border-radius:16px;background:linear-gradient(160deg,#13191e,#0b0f12)}
+.client-admin-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;margin-bottom:14px}
+.client-admin-head h2{font-size:20px;margin:0}
+.client-admin-head>span{font-size:11px;color:#9aa3aa}
+.client-create{display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:end}
+.client-create label{margin:0}
+.client-create input{min-height:42px;font-size:14px}
+.client-create .btn{height:42px}
+.client-list{display:grid;gap:7px;margin-top:14px}
+.client-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 11px;border:1px solid #ffffff0d;border-radius:11px;background:#090c0f}
+.client-row>div{min-width:0;display:flex;flex-direction:column;gap:3px;text-align:left}
+.client-row b{font-size:13px}
+.client-row small{font-size:11px;color:#8f989e}
+.client-state{min-height:34px;padding:6px 10px;border-radius:20px;font-size:11px;font-weight:800}
+.client-state.active{border:1px solid #4c7558;background:#15271a;color:#91c39d}
+.client-state.inactive{border:1px solid #70494c;background:#281618;color:#d89b9f}
+@media(max-width:720px){
+ .client-create{grid-template-columns:1fr}
+ .client-create .btn{width:100%}
+ .client-chip{display:none}
+}
+@media(max-width:430px){
+ .private-gate{padding:12px}
+ .private-shell{padding:24px 16px 20px}
+ .private-shell h1{font-size:27px}
+}
