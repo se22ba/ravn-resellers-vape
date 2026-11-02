@@ -1,21 +1,37 @@
 # Valhalla Vape — RAVN Resellers Vape V1
 
-MVP mobile-first para toma de pedidos de e-liquids e insumos de vapeo, administración de pedidos, seguimiento de pagos y consolidación de compras para Anubis.
+MVP mobile-first para pedidos de e-liquids e insumos de vapeo, administración de pedidos, seguimiento de pagos y consolidación de compras para Anubis.
 
-## Stack
+## Arquitectura
 
-- Frontend: React + TypeScript + Vite, preparado para GitHub Pages.
-- Backend: FastAPI + SQLAlchemy, preparado para Render.
-- Base: PostgreSQL externa mediante `DATABASE_URL` (SQLite solo para desarrollo local).
-- Admin: JWT con clave definida por variable de entorno.
+- **Frontend público/admin:** HTML + CSS + JavaScript estático en la raíz, compatible con GitHub Pages sin build.
+- **Backend:** FastAPI + SQLAlchemy, preparado para Render.
+- **Base de datos:** PostgreSQL externo mediante `DATABASE_URL`. SQLite queda solo como fallback de desarrollo.
+- **Admin:** acceso protegido con JWT y clave definida por variable de entorno.
+- **Branding:** logo Valhalla Vape embebido; estética nórdica oscura y mobile-first; 11 px mínimo absoluto.
 
-## Desarrollo local
+## Funciones V1
 
-### Backend
+- Catálogo Anubis de Tradicional, Premium, Clon, S.A.L.T.S. y Galaxy.
+- Selección de línea, sabor, ml y mg.
+- Equipos, resistencias, accesorios, descartables y promociones.
+- Insumos/promos sin margen: costo = venta.
+- Carrito y pedido identificado solo por nombre del cliente.
+- Envío cargado desde administración.
+- Transferencia habilitada recién en estado **Esperando pago**.
+- Botón **Ya transferí** para el cliente.
+- Estados e historial completo del pedido.
+- Dashboard admin con costo, venta y ganancia.
+- Consolidación de varios pedidos en un listado simple para Anubis.
+- Snapshot histórico de costos y ventas por cada línea de pedido.
+
+## Backend local
 
 ```bash
 cd backend
 python -m venv .venv
+# Windows: .venv\Scripts\activate
+# Linux/macOS: source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
 uvicorn app.main:app --reload
@@ -23,36 +39,30 @@ uvicorn app.main:app --reload
 
 API: `http://localhost:8000/api` · Swagger: `http://localhost:8000/docs`
 
-### Frontend
+## Variables de producción
 
-```bash
-cd frontend
-npm install
-cp .env.example .env
-npm run dev
+```env
+DATABASE_URL=postgresql+psycopg://...
+ADMIN_PASSWORD=...
+JWT_SECRET=...
+CORS_ORIGINS=https://se22ba.github.io
+PAYMENT_ALIAS=...
+PAYMENT_HOLDER=...
+PAYMENT_CVU=
 ```
 
-Web: `http://localhost:5173`
+## GitHub Pages
 
-## Producción
+La tienda está en la raíz del repositorio. Configurar Pages para publicar desde `main / (root)`.
 
-### Render / API
+El frontend apunta por defecto a:
 
-Usar `backend/render.yaml` o crear un Web Service con root `backend`.
-Variables: `DATABASE_URL`, `ADMIN_PASSWORD`, `JWT_SECRET`, `CORS_ORIGINS`, `PAYMENT_ALIAS`, `PAYMENT_HOLDER`. `PAYMENT_CVU` es opcional.
+`https://valhalla-vape-api.onrender.com/api`
 
-### GitHub Pages / frontend
+Si el servicio de Render usa otro hostname, cambiar la constante `API` en `app.js`.
 
-Configurar `VITE_API_URL` con la URL pública del backend antes de compilar. El frontend usa HashRouter.
+## Decisiones y pendientes
 
-## Reglas V1
+Ver `docs/DECISIONES_V1.md`.
 
-- Anubis es proveedor; Valhalla Vape es la identidad comercial.
-- Cliente: solo nombre.
-- E-liquids: línea + sabor + ml + mg.
-- Insumos/promos: costo = venta, sin margen.
-- Envío se carga desde administración.
-- Datos de transferencia solo desde “Esperando pago”.
-- Historial completo por pedido.
-- Consolidación simple para Anubis.
-- Mobile-first, mínimo tipográfico absoluto 11 px.
+**Pendiente funcional menor:** los mg de Tradicional/Premium/Clon/Galaxy están provisionalmente en 0/3/6 mg porque la fuente recibida no detalla todas las concentraciones. S.A.L.T.S. queda en 25 mg según el catálogo.
