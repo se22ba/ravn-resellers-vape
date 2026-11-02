@@ -166,6 +166,20 @@ def payment_reported(token: str, client: dict=Depends(require_client), db: Sessi
 @app.post("/api/admin/login")
 def admin_login(payload: AdminLogin): return {"token":login(payload.username, payload.password)}
 
+@app.get("/api/admin/catalog",dependencies=[Depends(require_admin)])
+def admin_catalog(db: Session=Depends(get_db)):
+    lines=db.query(LiquidLine).options(joinedload(LiquidLine.flavors),joinedload(LiquidLine.prices)).filter(LiquidLine.active==True).all()
+    products=db.query(Product).filter(Product.active==True).order_by(Product.category,Product.sort_order).all()
+    return {
+        "liquid_lines":[{"id":l.id,"slug":l.slug,"name":l.name,"nicotine_options":l.nicotine_options,
+            "flavors":sorted([f.name for f in l.flavors if f.active]),
+            "prices":sorted([{"size_ml":p.size_ml,"cost":money(p.cost),"sale":money(p.sale),
+                "profit":money(p.sale)-money(p.cost)} for p in l.prices],key=lambda x:x["size_ml"])} for l in lines],
+        "products":[{"id":p.id,"sku":p.sku,"name":p.name,"category":p.category,
+            "cost":money(p.cost),"sale":money(p.sale),"profit":money(p.sale)-money(p.cost),
+            "image_url":p.image_url,"price_tiers":p.price_tiers or []} for p in products]
+    }
+
 @app.get("/api/admin/clients",dependencies=[Depends(require_admin)])
 def admin_clients(db: Session=Depends(get_db)):
     rows=db.query(ClientAccess).order_by(ClientAccess.username).all()
