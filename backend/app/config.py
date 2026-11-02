@@ -4,8 +4,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     app_name: str = "Valhalla Vape API"
     database_url: str = "sqlite:///./ravn.db"
-    admin_password: str = "change-me"
-    jwt_secret: str = "change-me-too"
+    admin_password: str = ""
+    jwt_secret: str = ""
     cors_origins: str = "http://localhost:5173"
     payment_alias: str = ""
     payment_holder: str = ""
