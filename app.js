@@ -1,4 +1,4 @@
-const LOGO='https://raw.githubusercontent.com/se22ba/ravn-resellers-vape/main/assets/brand/valhalla.svg';
+const LOGO='/assets/brand/valhalla.svg';
 const API=(localStorage.getItem('vv-api')||'https://valhalla-vape-api.onrender.com/api').replace(/\/$/,'');
 const STATUS=[['received','Recibido'],['reviewed','Revisado'],['awaiting_payment','Esperando pago'],['paid','Pagado'],['supplier_ordered','Pedido a proveedor'],['supplier_received','Recibido de proveedor'],['ready','Listo para entregar'],['delivered','Entregado'],['cancelled','Cancelado']];
 const LIQUID_LINE_IMAGES={
