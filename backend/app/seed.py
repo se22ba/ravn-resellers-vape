@@ -50,12 +50,13 @@ def seed(db: Session):
     for slug, data in LIQUIDS.items():
         line = db.query(LiquidLine).filter(LiquidLine.slug == slug).first()
         if not line:
-            line = LiquidLine(slug=slug)
+            line = LiquidLine(slug=slug, name=data["name"], nicotine_options=data["nico"], active=True)
             db.add(line)
             db.flush()
-        line.name = data["name"]
-        line.nicotine_options = data["nico"]
-        line.active = True
+        else:
+            line.name = data["name"]
+            line.nicotine_options = data["nico"]
+            line.active = True
 
         existing_flavors = {f.name: f for f in line.flavors}
         for flavor_name in data["flavors"]:
@@ -77,15 +78,17 @@ def seed(db: Session):
     for idx, (sku, name, category, price, image_url, tiers) in enumerate(PRODUCTS):
         product = db.query(Product).filter(Product.sku == sku).first()
         if not product:
-            product = Product(sku=sku)
+            product = Product(sku=sku, name=name, category=category, cost=price, sale=price,
+                              image_url=image_url, price_tiers=tiers, active=True, sort_order=idx)
             db.add(product)
-        product.name = name
-        product.category = category
-        product.cost = price
-        product.sale = price
-        product.image_url = image_url
-        product.price_tiers = tiers
-        product.active = True
-        product.sort_order = idx
+        else:
+            product.name = name
+            product.category = category
+            product.cost = price
+            product.sale = price
+            product.image_url = image_url
+            product.price_tiers = tiers
+            product.active = True
+            product.sort_order = idx
 
     db.commit()
