@@ -584,3 +584,14 @@ body[data-view="client"] footer{
     grid-template-columns:1fr 1fr;
   }
 }
+
+.btn.danger,.delete-order-btn{
+  margin-top:9px;
+  border-color:rgba(178,76,76,.55);
+  background:linear-gradient(180deg,rgba(111,33,33,.92),rgba(70,20,20,.96));
+  color:#f2d7d7;
+}
+.btn.danger:hover,.delete-order-btn:hover{
+  border-color:rgba(211,96,96,.8);
+  background:linear-gradient(180deg,rgba(132,39,39,.96),rgba(83,24,24,.98));
+}
