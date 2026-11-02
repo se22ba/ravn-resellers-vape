@@ -108,7 +108,7 @@ def client_orders(client: dict=Depends(require_client), db: Session=Depends(get_
     orders=(db.query(Order)
         .join(OrderClientAccess, OrderClientAccess.order_id == Order.id)
         .options(joinedload(Order.items), joinedload(Order.events))
-        .filter(OrderClientAccess.client_id == client["id"])
+        .filter(OrderClientAccess.client_id == client["id"], Order.status!="cancelled")
         .order_by(Order.created_at.desc())
         .all())
     return [order_view(order, public=True) for order in orders]
@@ -207,6 +207,19 @@ def edit_public_order(token: str, payload: OrderCreate, client: dict=Depends(req
     db.commit()
     order=db.query(Order).options(joinedload(Order.items),joinedload(Order.events)).filter(Order.id==order.id).first()
     return order_view(order,public=True)
+
+@app.delete("/api/orders/public/{token}")
+def delete_public_order(token: str, client: dict=Depends(require_client), db: Session=Depends(get_db)):
+    order=db.query(Order).options(joinedload(Order.events)).filter(Order.public_token==token).first()
+    if not order: raise HTTPException(404,"Pedido no encontrado")
+    ensure_client_order(db,order,client)
+    if order.status not in CLIENT_EDITABLE_STATUSES:
+        raise HTTPException(409,"El pedido ya fue enviado al proveedor y no puede eliminarse")
+    previous=STATUS_LABELS.get(order.status,order.status)
+    order.status="cancelled"
+    db.add(OrderEvent(order_id=order.id,event_type="client_cancelled",detail=f"Pedido eliminado por el cliente (estado anterior: {previous})"))
+    db.commit()
+    return {"ok":True,"number":order.number}
 
 @app.post("/api/orders/public/{token}/payment-reported")
 def payment_reported(token: str, client: dict=Depends(require_client), db: Session=Depends(get_db)):
