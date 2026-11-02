@@ -23,7 +23,7 @@ from .auth import (
 )
 
 settings = get_settings()
-app = FastAPI(title=settings.app_name, version="1.1.0")
+app = FastAPI(title="Private API", version="1.1.0", docs_url=None, redoc_url=None, openapi_url=None)
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_list, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 STATUSES = ["received","reviewed","awaiting_payment","paid","supplier_ordered","supplier_received","ready","delivered","cancelled"]
@@ -91,7 +91,7 @@ def startup():
     finally: db.close()
 
 @app.get("/api/health")
-def health(): return {"ok":True,"service":settings.app_name}
+def health(): return {"ok":True}
 
 @app.post("/api/client/login")
 def client_login(payload: ClientLogin, db: Session=Depends(get_db)):
