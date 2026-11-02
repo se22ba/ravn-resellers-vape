@@ -19,6 +19,10 @@
 - Backend FastAPI en Render; PostgreSQL externo mediante DATABASE_URL.
 - El frontend público nunca recibe costos de proveedor.
 
-## Pendiente menor
+## Configuración confirmada
 
-Las opciones exactas de mg ofrecidas por Anubis para Tradicional/Premium/Clon/Galaxy no figuran en la fuente recibida. El seed usa provisionalmente 0/3/6 mg para esas líneas y 25 mg para S.A.L.T.S.; se modifica por configuración cuando se confirme la lista real.
+- Nicotina para Tradicional, Premium, Clon y Galaxy: **0 / 3 / 6 / 9 / 12 mg**.
+- S.A.L.T.S.: concentración fija, sin selector de variación.
+- Usuario administrativo: **spafundi**. La contraseña se mantiene exclusivamente como secreto de despliegue, nunca en el repositorio.
+- Alias de transferencia: **se22ba.mercadopago**.
+- Para insumos sin fotografía se genera una ilustración de catálogo consistente con la identidad visual, usando nombre y categoría como referencia.
