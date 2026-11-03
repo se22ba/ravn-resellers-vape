@@ -1,10 +1,10 @@
 from collections import defaultdict
 from datetime import datetime
-import csv, io
+import csv, io, re
 from fastapi import FastAPI, Depends, HTTPException, Response, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import func
+from sqlalchemy import func, inspect
 from sqlalchemy.exc import IntegrityError
 from .config import get_settings
 from .db import Base, engine, get_db, SessionLocal
@@ -21,7 +21,7 @@ from .auth import (
     login, require_admin, login_client, require_client,
     normalize_username, normalize_phone, hash_password, seed_admins
 )
-from .notifications import send_new_order_email
+from .notifications import send_new_order_email, send_payment_reported_email, send_client_status_email
 
 settings = get_settings()
 app = FastAPI(title="Private API", version="1.1.0", docs_url=None, redoc_url=None, openapi_url=None)
@@ -36,6 +36,34 @@ STATUS_LABELS = {
 }
 
 def money(v): return float(v or 0)
+
+def normalize_email(value: str | None) -> str | None:
+    email=(value or "").strip().lower()
+    if not email:
+        return None
+    if len(email)>254 or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+        raise HTTPException(400,"Correo electrónico inválido")
+    return email
+
+def client_for_order(db: Session, order_id: int) -> ClientAccess | None:
+    return (db.query(ClientAccess)
+        .join(OrderClientAccess, OrderClientAccess.client_id == ClientAccess.id)
+        .filter(OrderClientAccess.order_id == order_id)
+        .first())
+
+def ensure_optional_email_column():
+    schema=settings.db_schema if engine.dialect.name=="postgresql" else None
+    inspector=inspect(engine)
+    columns={c["name"] for c in inspector.get_columns("client_access", schema=schema)}
+    if "email" in columns:
+        return
+    if schema:
+        safe_schema=schema.replace('"','""')
+        table=f'"{safe_schema}"."client_access"'
+    else:
+        table="client_access"
+    with engine.begin() as conn:
+        conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN email VARCHAR(254)")
 
 def tier_total(product: Product, qty: int) -> float:
     tiers = sorted(product.price_tiers or [], key=lambda x: int(x["qty"]), reverse=True)
@@ -89,6 +117,7 @@ def startup():
         with engine.begin() as conn:
             conn.exec_driver_sql(f'CREATE SCHEMA IF NOT EXISTS "{safe_schema}"')
     Base.metadata.create_all(bind=engine)
+    ensure_optional_email_column()
     db=SessionLocal()
     try:
         seed(db)
@@ -162,6 +191,7 @@ def create_order(payload: OrderCreate, background_tasks: BackgroundTasks, client
     view=order_view(order,public=True)
     background_tasks.add_task(
         send_new_order_email,
+        order.id,
         order.number,
         order.customer_name,
         view["total"],
@@ -233,14 +263,17 @@ def delete_public_order(token: str, client: dict=Depends(require_client), db: Se
     return {"ok":True,"number":order.number}
 
 @app.post("/api/orders/public/{token}/payment-reported")
-def payment_reported(token: str, client: dict=Depends(require_client), db: Session=Depends(get_db)):
-    order=db.query(Order).filter(Order.public_token==token).first()
+def payment_reported(token: str, background_tasks: BackgroundTasks, client: dict=Depends(require_client), db: Session=Depends(get_db)):
+    order=db.query(Order).options(joinedload(Order.items)).filter(Order.public_token==token).first()
     if not order: raise HTTPException(404,"Pedido no encontrado")
     ensure_client_order(db,order,client)
     if order.status!="awaiting_payment": raise HTTPException(400,"El pedido todavía no está esperando pago")
     order.payment_reported_at=datetime.utcnow()
     db.add(OrderEvent(order_id=order.id,event_type="payment_reported",detail="El cliente informó que realizó la transferencia"))
-    db.commit(); return {"ok":True}
+    db.commit()
+    total=sum(money(i.line_total_sale) for i in order.items)+money(order.shipping)
+    background_tasks.add_task(send_payment_reported_email,order.id,order.number,order.customer_name,total)
+    return {"ok":True}
 
 @app.post("/api/admin/login")
 def admin_login(payload: AdminLogin, db: Session=Depends(get_db)): return {"token":login(payload.username, payload.password, db)}
@@ -304,21 +337,22 @@ def admin_catalog(db: Session=Depends(get_db)):
 @app.get("/api/admin/clients",dependencies=[Depends(require_admin)])
 def admin_clients(db: Session=Depends(get_db)):
     rows=db.query(ClientAccess).order_by(ClientAccess.username).all()
-    return [{"id":c.id,"username":c.username,"phone":c.phone,"active":c.active,"created_at":c.created_at.isoformat()} for c in rows]
+    return [{"id":c.id,"username":c.username,"phone":c.phone,"email":c.email,"active":c.active,"created_at":c.created_at.isoformat()} for c in rows]
 
 @app.post("/api/admin/clients",dependencies=[Depends(require_admin)])
 def admin_create_client(payload: ClientCreate, db: Session=Depends(get_db)):
     username=normalize_username(payload.username)
     phone=normalize_phone(payload.phone)
+    email=normalize_email(payload.email)
     if len(phone)<6: raise HTTPException(400,"Número de teléfono inválido")
-    client=ClientAccess(username=username,phone=phone,active=True)
+    client=ClientAccess(username=username,phone=phone,email=email,active=True)
     db.add(client)
     try:
         db.commit(); db.refresh(client)
     except IntegrityError:
         db.rollback()
         raise HTTPException(409,"El usuario o teléfono ya está registrado")
-    return {"id":client.id,"username":client.username,"phone":client.phone,"active":client.active}
+    return {"id":client.id,"username":client.username,"phone":client.phone,"email":client.email,"active":client.active}
 
 @app.patch("/api/admin/clients/{client_id}",dependencies=[Depends(require_admin)])
 def admin_patch_client(client_id:int,payload:ClientPatch,db:Session=Depends(get_db)):
@@ -329,13 +363,14 @@ def admin_patch_client(client_id:int,payload:ClientPatch,db:Session=Depends(get_
         phone=normalize_phone(payload.phone)
         if len(phone)<6: raise HTTPException(400,"Número de teléfono inválido")
         client.phone=phone
+    if payload.email is not None: client.email=normalize_email(payload.email)
     if payload.active is not None: client.active=payload.active
     try:
         db.commit(); db.refresh(client)
     except IntegrityError:
         db.rollback()
         raise HTTPException(409,"El usuario o teléfono ya está registrado")
-    return {"id":client.id,"username":client.username,"phone":client.phone,"active":client.active}
+    return {"id":client.id,"username":client.username,"phone":client.phone,"email":client.email,"active":client.active}
 
 @app.get("/api/admin/orders",dependencies=[Depends(require_admin)])
 def admin_orders(db: Session=Depends(get_db)):
@@ -343,9 +378,10 @@ def admin_orders(db: Session=Depends(get_db)):
     return [order_view(o) for o in orders]
 
 @app.patch("/api/admin/orders/{order_id}",dependencies=[Depends(require_admin)])
-def patch_order(order_id:int,payload:OrderAdminPatch,db:Session=Depends(get_db)):
+def patch_order(order_id:int,payload:OrderAdminPatch,background_tasks:BackgroundTasks,db:Session=Depends(get_db)):
     order=db.query(Order).options(joinedload(Order.items),joinedload(Order.events)).filter(Order.id==order_id).first()
     if not order: raise HTTPException(404,"Pedido no encontrado")
+    status_change=None
     if payload.shipping is not None and float(order.shipping)!=payload.shipping:
         order.shipping=payload.shipping
         db.add(OrderEvent(order_id=order.id,event_type="shipping_changed",detail=f"Envío actualizado a ARS {payload.shipping:,.0f}"))
@@ -354,10 +390,19 @@ def patch_order(order_id:int,payload:OrderAdminPatch,db:Session=Depends(get_db))
         if payload.status!=order.status:
             old=STATUS_LABELS.get(order.status,order.status); new=STATUS_LABELS[payload.status]
             order.status=payload.status
+            status_change=(old,new)
             db.add(OrderEvent(order_id=order.id,event_type="status_changed",detail=f"Estado: {old} → {new}"))
     db.commit()
     order=db.query(Order).options(joinedload(Order.items),joinedload(Order.events)).filter(Order.id==order.id).first()
-    return order_view(order)
+    view=order_view(order)
+    if status_change:
+        customer=client_for_order(db,order.id)
+        if customer and customer.email:
+            background_tasks.add_task(
+                send_client_status_email,customer.email,order.public_token,order.number,order.customer_name,
+                status_change[0],status_change[1],view["total"]
+            )
+    return view
 
 @app.get("/api/admin/metrics",dependencies=[Depends(require_admin)])
 def metrics(db: Session=Depends(get_db)):
@@ -369,16 +414,26 @@ def metrics(db: Session=Depends(get_db)):
         "new":sum(1 for o in orders if o.status=="received")}
 
 @app.post("/api/admin/supplier-batches",dependencies=[Depends(require_admin)])
-def create_batch(payload:BatchCreate,db:Session=Depends(get_db)):
+def create_batch(payload:BatchCreate,background_tasks:BackgroundTasks,db:Session=Depends(get_db)):
     orders=db.query(Order).options(joinedload(Order.items)).filter(Order.id.in_(payload.order_ids)).all()
     if len(orders)!=len(set(payload.order_ids)): raise HTTPException(400,"Hay pedidos inválidos")
     batch=SupplierBatch(number="TEMP",order_ids=payload.order_ids,extra_items=payload.extra_items)
     db.add(batch); db.flush(); batch.number=f"ANU-{datetime.utcnow():%y%m%d}-{batch.id:03d}"
+    changed=[]
     for o in orders:
         if o.status in {"received","reviewed","awaiting_payment","paid"}:
+            old=STATUS_LABELS.get(o.status,o.status)
             o.status="supplier_ordered"
+            changed.append((o,old,STATUS_LABELS["supplier_ordered"]))
             db.add(OrderEvent(order_id=o.id,event_type="supplier_batch",detail=f"Incluido en {batch.number}"))
     db.commit(); db.refresh(batch)
+    for o,old,new in changed:
+        customer=client_for_order(db,o.id)
+        if customer and customer.email:
+            total=sum(money(i.line_total_sale) for i in o.items)+money(o.shipping)
+            background_tasks.add_task(
+                send_client_status_email,customer.email,o.public_token,o.number,o.customer_name,old,new,total
+            )
     return batch_export_payload(batch,orders)
 
 def batch_export_payload(batch:SupplierBatch,orders:list[Order]):
