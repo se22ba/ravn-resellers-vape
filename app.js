@@ -107,7 +107,18 @@ function goToEmailSettings(){
 }
 function clientOrdersSection(orders=[]){return `${clientEmailNotice()}<section class="client-orders-section"><div class="client-orders-head"><div><p class="eyebrow">SEGUIMIENTO</p><h2>Mis pedidos</h2></div><button class="btn ghost compact" onclick="shop()">Actualizar</button></div>${orders.length?`<div class="client-orders-grid">${orders.slice(0,6).map(o=>`<button class="client-order-card" onclick="location.hash='pedido=${o.public_token}'"><div class="client-order-top"><div><b>${esc(o.number)}</b><small>${new Date(o.created_at).toLocaleString('es-AR')}</small></div><span class="status-badge s-${o.status}">${esc(o.status_label)}</span></div><div class="client-order-bottom"><span>${o.items.reduce((s,i)=>s+i.quantity,0)} ítems</span><strong>${ars(o.total)}</strong></div></button>`).join('')}</div>`:'<div class="client-orders-empty">Todavía no tenés pedidos.</div>'}</section>`}
 function saveCart(){if(editingOrderToken)sessionStorage.setItem('vv-edit-order-cart',JSON.stringify(cart));else localStorage.setItem(clientCartKey(),JSON.stringify(cart));}
-function updateCartCount(){const i=document.querySelector('.top-actions .icon-btn i');if(i)i.textContent=String(cart.reduce((s,x)=>s+x.quantity,0))}
+function updateCartCount(){
+  const count=cart.reduce((s,x)=>s+x.quantity,0);
+  const total=cart.reduce((s,x)=>s+x.line_total,0);
+  const i=document.querySelector('.top-actions .icon-btn i');
+  if(i)i.textContent=String(count);
+  const c=document.querySelector('#editWorkspaceCount');
+  const l=document.querySelector('#editWorkspaceCountLabel');
+  const t=document.querySelector('#editWorkspaceTotal');
+  if(c)c.textContent=String(count);
+  if(l)l.textContent=count===1?'ítem':'ítems';
+  if(t)t.textContent=ars(total);
+}
 function flavorNorm(v){return String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim()}
 function flavorDescription(slug,name){return FLAVOR_DESCRIPTIONS?.[slug]?.[name]||''}
 function lineFlavorMatches(line,query){const q=flavorNorm(query);return line.flavors.filter(name=>!q||flavorNorm(name+' '+flavorDescription(line.slug,name)).includes(q))}
@@ -140,8 +151,8 @@ function editOrderWorkspace(){
       <p>Podés modificar lo que ya pediste o seguir agregando productos del catálogo. Guardás todo una sola vez al terminar.</p>
     </div>
     <div class="edit-workspace-summary">
-      <span><b>${count}</b> ${count===1?'ítem':'ítems'}</span>
-      <strong>${ars(total)}</strong>
+      <span><b id="editWorkspaceCount">${count}</b> <span id="editWorkspaceCountLabel">${count===1?'ítem':'ítems'}</span></span>
+      <strong id="editWorkspaceTotal">${ars(total)}</strong>
     </div>
     <div class="edit-workspace-actions">
       <button class="btn primary compact" onclick="showCart()">Ver y guardar cambios</button>
@@ -193,7 +204,7 @@ function saveCartEdit(i){
     const p=catalog?.products?.find(p=>p.id===x.reference_id); if(!p)return;
     x.quantity=q;x.line_total=tierTotal(p,q);x.name=p.name;
   }
-  saveCart();updateCartCount();document.querySelector('#cartModal')?.remove();showCart();toast('Cambios guardados');
+  saveCart();updateCartCount();document.querySelector('#cartModal')?.remove();showCart();toast(editingOrderToken?'Cambio aplicado al pedido en edición':'Producto actualizado');
 }
 function removeCartItem(i){cart.splice(i,1);saveCart();document.querySelector('#cartModal')?.remove();updateCartCount();showCart()}
 function showCart(){
