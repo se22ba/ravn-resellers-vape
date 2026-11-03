@@ -19,10 +19,12 @@ class ClientLogin(BaseModel):
 class ClientCreate(BaseModel):
     username: str = Field(min_length=2, max_length=80)
     phone: str = Field(min_length=6, max_length=32)
+    email: str | None = Field(default=None, max_length=254)
 
 class ClientPatch(BaseModel):
     username: str | None = Field(default=None, min_length=2, max_length=80)
     phone: str | None = Field(default=None, min_length=6, max_length=32)
+    email: str | None = Field(default=None, max_length=254)
     active: bool | None = None
 
 class AdminLogin(BaseModel):
