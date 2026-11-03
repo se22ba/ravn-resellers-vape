@@ -14,6 +14,12 @@ class Settings(BaseSettings):
     payment_alias: str = "se22ba.mercadopago"
     payment_holder: str = ""
     payment_cvu: str = ""
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 465
+    smtp_user: str = ""
+    smtp_app_password: str = ""
+    notify_email_to: str = ""
+    public_app_url: str = "https://valhalla-vape.onrender.com/"
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
     @property
     def cors_list(self) -> list[str]:
