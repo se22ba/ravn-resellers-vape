@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     payment_cvu: str = ""
     notification_webhook_url: str = ""
     valhalla_secret: str = ""
+    admin_notification_email: str = "lspafundi@gmail.com"
     public_app_url: str = "https://valhalla-vape.onrender.com/"
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
     @property
