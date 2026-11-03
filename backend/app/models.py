@@ -109,6 +109,7 @@ class ClientAccess(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     username: Mapped[str] = mapped_column(String(80), unique=True, index=True)
     phone: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    email: Mapped[str | None] = mapped_column(String(254), nullable=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
