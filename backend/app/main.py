@@ -13,7 +13,7 @@ from .models import (
     SupplierBatch, ClientAccess, OrderClientAccess, AdminUser
 )
 from .schemas import (
-    OrderCreate, ClientLogin, ClientCreate, ClientPatch,
+    OrderCreate, ClientLogin, ClientCreate, ClientPatch, ClientEmailUpdate,
     AdminLogin, AdminUserCreate, AdminUserPatch, OrderAdminPatch, BatchCreate
 )
 from .seed import seed
@@ -133,7 +133,15 @@ def client_login(payload: ClientLogin, db: Session=Depends(get_db)):
 
 @app.get("/api/client/me")
 def client_me(client: dict=Depends(require_client)):
-    return {"id":client["id"],"username":client["username"]}
+    return {"id":client["id"],"username":client["username"],"email":client.get("email")}
+
+@app.patch("/api/client/email")
+def client_update_email(payload: ClientEmailUpdate, client: dict=Depends(require_client), db: Session=Depends(get_db)):
+    row=db.get(ClientAccess,client["id"])
+    if not row: raise HTTPException(404,"Cliente no encontrado")
+    row.email=normalize_email(payload.email)
+    db.commit(); db.refresh(row)
+    return {"id":row.id,"username":row.username,"email":row.email}
 
 @app.get("/api/client/orders")
 def client_orders(client: dict=Depends(require_client), db: Session=Depends(get_db)):
