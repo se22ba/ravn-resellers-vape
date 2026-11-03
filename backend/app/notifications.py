@@ -36,7 +36,7 @@ def _send_email(to: str, subject: str, body: str, html_body: str | None = None, 
             if response.status < 200 or response.status >= 300:
                 raise RuntimeError(f"Webhook respondió HTTP {response.status}: {result}")
             if result and result.upper() not in {"OK", "SUCCESS"}:
-                logger.info("Respuesta del webhook (%s): %s", label, result)
+                raise RuntimeError(f"Webhook respondió: {result}")
         logger.info("Notificación enviada (%s) a %s", label, to)
     except Exception:
         logger.exception("No se pudo enviar %s", label)
@@ -75,6 +75,27 @@ def send_new_order_email(order_id: int, order_number: str, customer_name: str, t
     _send_email(settings.admin_notification_email, subject, body,
                 _button_html("Nuevo pedido", f"{customer_name} realizó un pedido.", details, "Abrir pedido", url),
                 f"nuevo pedido {order_number}")
+
+def send_order_edited_email(order_id: int, order_number: str, customer_name: str, total: float, items: list[dict]):
+    lines = [f"{i['quantity']}x {i['name']} — {_money(i['line_total'])}" for i in items]
+    total_text = _money(total)
+    url = f"{settings.public_app_url}#admin-order={order_id}"
+    subject = f"✏️ Pedido editado {order_number} · {customer_name} · {total_text}"
+    body = (
+        f"{customer_name} modificó un pedido en Valhalla Vape.\n\n"
+        f"Pedido: {order_number}\nCliente: {customer_name}\nNuevo total: {total_text}\n\n"
+        + "\n".join(lines)
+        + f"\n\nAbrir pedido: {url}"
+    )
+    details = (
+        f"<b>Pedido:</b> {html.escape(order_number)}<br>"
+        f"<b>Cliente:</b> {html.escape(customer_name)}<br>"
+        f"<b>Nuevo total:</b> {html.escape(total_text)}<br><br>"
+        + "<br>".join(html.escape(x) for x in lines)
+    )
+    _send_email(settings.admin_notification_email, subject, body,
+                _button_html("Pedido editado", f"{customer_name} modificó su pedido.", details, "Revisar pedido", url),
+                f"pedido editado {order_number}")
 
 def send_payment_reported_email(order_id: int, order_number: str, customer_name: str, total: float):
     url = f"{settings.public_app_url}#admin-order={order_id}"
