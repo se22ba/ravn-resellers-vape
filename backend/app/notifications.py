@@ -1,18 +1,19 @@
+import json
 import logging
-import smtplib
-import ssl
-from email.message import EmailMessage
+from urllib.request import Request, urlopen
 from .config import get_settings
 
 logger = logging.getLogger("valhalla.notifications")
 settings = get_settings()
 
 def email_notifications_enabled() -> bool:
-    return bool(settings.smtp_user and settings.smtp_app_password and settings.notify_email_to)
+    return bool(settings.notification_webhook_url and settings.valhalla_secret)
 
 def send_new_order_email(order_number: str, customer_name: str, total: float, items: list[dict]):
     if not email_notifications_enabled():
+        logger.warning("Notificación omitida: falta configurar webhook o secreto")
         return
+
     try:
         lines = [f"{i['quantity']}x {i['name']} — $ {i['line_total']:,.0f}".replace(",", ".") for i in items]
         total_text = f"$ {total:,.0f}".replace(",", ".")
@@ -27,15 +28,25 @@ def send_new_order_email(order_number: str, customer_name: str, total: float, it
             + f"\n\nAbrir Salón del Jarl: {settings.public_app_url}#admin"
         )
 
-        msg = EmailMessage()
-        msg["Subject"] = subject
-        msg["From"] = settings.smtp_user
-        msg["To"] = settings.notify_email_to
-        msg.set_content(body)
+        payload = json.dumps({
+            "secret": settings.valhalla_secret,
+            "subject": subject,
+            "body": body,
+        }).encode("utf-8")
 
-        context = ssl.create_default_context()
-        with smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port, context=context, timeout=15) as smtp:
-            smtp.login(settings.smtp_user, settings.smtp_app_password)
-            smtp.send_message(msg)
+        request = Request(
+            settings.notification_webhook_url,
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urlopen(request, timeout=15) as response:
+            result = response.read().decode("utf-8", errors="replace").strip()
+            if response.status < 200 or response.status >= 300:
+                raise RuntimeError(f"Webhook respondió HTTP {response.status}: {result}")
+            if result and result.upper() not in {"OK", "SUCCESS"}:
+                logger.info("Respuesta del webhook de notificación: %s", result)
+
+        logger.info("Notificación enviada para %s", order_number)
     except Exception:
         logger.exception("No se pudo enviar la notificación de nuevo pedido")
