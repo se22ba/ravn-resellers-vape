@@ -28,6 +28,7 @@ function loadClientCart(profile=clientProfile){
 }
 function clearEditSession(){
   editingOrderToken='';editingOrderNumber='';
+  document.body.classList.remove('order-edit-mode');
   sessionStorage.removeItem('vv-edit-order-token');
   sessionStorage.removeItem('vv-edit-order-number');
   sessionStorage.removeItem('vv-edit-order-cart');
@@ -45,7 +46,10 @@ function safeJSONSession(key,fallback){try{return JSON.parse(sessionStorage.getI
 function toast(t){const el=document.querySelector('#toast');el.textContent=t;el.classList.remove('hidden');setTimeout(()=>el.classList.add('hidden'),2200)}
 async function forceRefresh(){try{if('caches' in window){for(const k of await caches.keys())await caches.delete(k)}}catch{}const u=new URL(location.href);u.searchParams.set('_refresh',Date.now());location.replace(u.toString())}
 async function req(path,opt={}){const headers={'Content-Type':'application/json',...(opt.headers||{})};if(clientToken&&!headers.Authorization&&!path.startsWith('/admin/')&&!path.startsWith('/client/login'))headers.Authorization='Bearer '+clientToken;const r=await fetch(API+path,{...opt,headers,cache:'no-store'});if(!r.ok){let j={};try{j=await r.json()}catch{}if(r.status===401&&clientToken&&!path.startsWith('/admin/')&&!path.startsWith('/client/login')){clientLogout(false)}throw new Error(j.detail||'Error de comunicación')}return (r.headers.get('content-type')||'').includes('json')?r.json():r.text()}
-function header(admin=false){return `<header class="topbar"><button class="brand" onclick="location.hash='' "><img class="brand-logo" src="${LOGO}"><span><b>VALHALLA</b><small>VAPE</small></span></button><div class="top-actions">${admin?'<span class="admin-chip">ADMIN</span>':`<span class="client-chip">${esc(clientProfile?.username||'Cliente')}</span><a class="admin-entry" href="#admin" aria-label="Acceder al Salón del Jarl">ᛉ <span>Salón del Jarl</span></a><button class="icon-btn" onclick="showCart()">🛍<i>${cart.reduce((s,x)=>s+x.quantity,0)}</i></button><button class="icon-btn logout-btn" onclick="clientLogout()" title="Cerrar sesión">↪</button>`}</div></header>`}
+function syncOrderEditMode(){
+  document.body.classList.toggle('order-edit-mode',!!editingOrderToken);
+}
+function header(admin=false){return `<header class="topbar"><button class="brand" onclick="location.hash='' "><img class="brand-logo" src="${LOGO}"><span><b>VALHALLA</b><small>VAPE</small></span></button><div class="top-actions">${admin?'<span class="admin-chip">ADMIN</span>':`${editingOrderToken?`<button class="edit-header-chip" onclick="showCart()" title="Pedido en edición"><span>EDITANDO</span><b>${esc(editingOrderNumber)}</b></button>`:''}<span class="client-chip">${esc(clientProfile?.username||'Cliente')}</span><a class="admin-entry" href="#admin" aria-label="Acceder al Salón del Jarl">ᛉ <span>Salón del Jarl</span></a><button class="icon-btn" onclick="showCart()">🛍<i>${cart.reduce((s,x)=>s+x.quantity,0)}</i></button><button class="icon-btn logout-btn" onclick="clientLogout()" title="Cerrar sesión">↪</button>`}</div></header>`}
 function footer(){return `<footer><span>ᚠ ᚢ ᚦ ᚨ ᚱ ᚲ</span><p>Valhalla Vape · Solo para mayores de edad</p><a class="jarl-footer-link" href="#admin">ᛉ Acceder al Salón del Jarl</a></footer>`}
 function privateWelcome(message=''){viewMode('private');document.title='Acceso privado';catalog=null;document.querySelector('#app').innerHTML=`<main class="private-gate branded-gate"><div class="private-bg neutral-bg"></div><div class="private-overlay"></div><section class="private-shell private-shell-client"><img class="private-brand-mark" src="${LOGO}" alt="" onerror="this.style.display='none';document.querySelector('.private-bg')?.classList.add('brand-fallback')"><p class="private-kicker private-welcome">QUÉ BUENO VERTE</p>${message?`<div class="private-error">${esc(message)}</div>`:''}<label>Usuario<input id="clientUser" autocomplete="username" placeholder="Usuario"></label><label>Número de teléfono<input id="clientPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="Teléfono"></label><button class="btn primary full" onclick="doClientLogin()">Ingresar</button><a class="management-entry" href="#admin">Acceso de gestión</a></section></main>`;applyGateBrand();const u=document.querySelector('#clientUser');if(u)u.focus()}
 function applyGateBrand(){const bg=document.querySelector('.private-bg');if(!bg||!BRAND_BG)return;const img=new Image();img.onload=()=>{bg.style.backgroundImage=`url("${BRAND_BG}")`;bg.classList.remove('neutral-bg')};img.onerror=()=>bg.classList.add('brand-fallback');img.src=BRAND_BG}
@@ -137,39 +141,41 @@ function addLiquid(slug){const l=catalog.liquid_lines.find(x=>x.slug===slug),inp
 function addProduct(id){const p=catalog.products.find(x=>x.id===id),qtyEl=document.querySelector(`#pq-${id}`),q=+qtyEl.textContent,total=tierTotal(p,q),key=`p-${id}`,old=cart.find(x=>x.key===key);if(old){old.quantity+=q;old.line_total=tierTotal(p,old.quantity)}else cart.push({key,kind:'product',reference_id:id,quantity:q,name:p.name,line_total:total});saveCart();if(qtyEl)qtyEl.textContent='1';toast(editingOrderToken?'Agregado a '+editingOrderNumber:'Agregado al pedido');updateCartCount()}
 function qty(id,d){const e=document.querySelector('#'+id);e.textContent=Math.max(1,+e.textContent+d)}
 function liquidImageFallback(img){const slug=img.dataset.slug||'',base='assets/liquids/'+slug,raw='https://raw.githubusercontent.com/se22ba/ravn-resellers-vape/main/assets/liquids/'+slug,remote=LIQUID_LINE_IMAGES[slug]||'',fallback=productPlaceholder(img.dataset.name||'Anubis','E-Liquid');const tries=[base+'.png',base+'.jpg',base+'.jpeg',raw+'.webp',raw+'.png',raw+'.jpg',raw+'.jpeg',remote,fallback].filter(Boolean);let i=Number(img.dataset.try||0)+1;if(i<tries.length){img.dataset.try=String(i);img.src=tries[i]}else img.onerror=null}
-function liquidCard(l){let min=Math.min(...l.prices.map(p=>p.sale)),local=`assets/liquids/${l.slug}.webp`;return `<article class="liquid-card line-${l.slug}"><img class="liquid-line-art" src="${esc(local)}" alt="Envase línea ${esc(l.name)}" data-slug="${esc(l.slug)}" data-name="${esc(l.name)}" data-try="0" onerror="liquidImageFallback(this)"><div class="liquid-shade"></div><div class="liquid-emblem"><span>ᚱ</span></div><div class="liquid-card-content"><div class="liquid-head"><p class="eyebrow">LÍNEA</p><h3>${esc(l.name)}</h3><strong>desde ${ars(min)}</strong></div><label>Sabor<div class="flavor-picker"><div class="flavor-input-wrap"><input id="f-${l.slug}" type="search" inputmode="search" autocomplete="off" placeholder="Buscar sabor…" data-selected="" onfocus="openFlavorPicker('${l.slug}')" oninput="filterFlavorPicker('${l.slug}',this.value)"><button type="button" class="flavor-toggle" aria-label="Ver sabores" onclick="event.preventDefault();openFlavorPicker('${l.slug}')">⌄</button></div><div id="fr-${l.slug}" class="flavor-results"></div><small id="fd-${l.slug}" class="flavor-description">Escribí para buscar o elegí de la lista</small></div></label><div class="grid-2"><label>Medida<select id="s-${l.slug}">${l.prices.map(p=>`<option value="${p.size_ml}">${p.size_ml} ml · ${ars(p.sale)}</option>`).join('')}</select></label><label>Nicotina<select id="n-${l.slug}">${l.nicotine_options.map(x=>`<option value="${x}">${x} mg</option>`).join('')}</select></label></div><div class="add-row"><div class="qty"><button onclick="qty('q-${l.slug}',-1)">−</button><span id="q-${l.slug}">1</span><button onclick="qty('q-${l.slug}',1)">+</button></div><button class="btn primary compact" onclick="addLiquid('${l.slug}')">+ Agregar</button></div></div></article>`}
+function liquidCard(l){let min=Math.min(...l.prices.map(p=>p.sale)),local=`assets/liquids/${l.slug}.webp`;return `<article class="liquid-card line-${l.slug}"><img class="liquid-line-art" src="${esc(local)}" alt="Envase línea ${esc(l.name)}" data-slug="${esc(l.slug)}" data-name="${esc(l.name)}" data-try="0" onerror="liquidImageFallback(this)"><div class="liquid-shade"></div><div class="liquid-emblem"><span>ᚱ</span></div><div class="liquid-card-content"><div class="liquid-head"><p class="eyebrow">LÍNEA</p><h3>${esc(l.name)}</h3><strong>desde ${ars(min)}</strong></div><label>Sabor<div class="flavor-picker"><div class="flavor-input-wrap"><input id="f-${l.slug}" type="search" inputmode="search" autocomplete="off" placeholder="Buscar sabor…" data-selected="" onfocus="openFlavorPicker('${l.slug}')" oninput="filterFlavorPicker('${l.slug}',this.value)"><button type="button" class="flavor-toggle" aria-label="Ver sabores" onclick="event.preventDefault();openFlavorPicker('${l.slug}')">⌄</button></div><div id="fr-${l.slug}" class="flavor-results"></div><small id="fd-${l.slug}" class="flavor-description">Escribí para buscar o elegí de la lista</small></div></label><div class="grid-2"><label>Medida<select id="s-${l.slug}">${l.prices.map(p=>`<option value="${p.size_ml}">${p.size_ml} ml · ${ars(p.sale)}</option>`).join('')}</select></label><label>Nicotina<select id="n-${l.slug}">${l.nicotine_options.map(x=>`<option value="${x}">${x} mg</option>`).join('')}</select></label></div><div class="add-row"><div class="qty"><button onclick="qty('q-${l.slug}',-1)">−</button><span id="q-${l.slug}">1</span><button onclick="qty('q-${l.slug}',1)">+</button></div><button class="btn primary compact catalog-add-btn" onclick="addLiquid('${l.slug}')">${editingOrderToken?'＋ Sumar al pedido':'+ Agregar'}</button></div></div></article>`}
 function productPlaceholder(name,category){const clean=v=>String(v||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));const words=String(name||'Producto').split(/\s+/).slice(0,4),top=clean(words.slice(0,2).join(' ')),bottom=clean(words.slice(2).join(' ')),cat=clean(String(category||'Insumo').toUpperCase());const svg='<svg xmlns="http://www.w3.org/2000/svg" width="480" height="480" viewBox="0 0 480 480"><defs><linearGradient id="g" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#1f2830"/><stop offset="1" stop-color="#090c0f"/></linearGradient><linearGradient id="b" x1="0" x2="1"><stop stop-color="#d0b173"/><stop offset="1" stop-color="#8f7548"/></linearGradient></defs><rect width="480" height="480" rx="28" fill="url(#g)"/><rect x="18" y="18" width="444" height="444" rx="22" fill="none" stroke="#3d4852"/><circle cx="240" cy="150" r="88" fill="#10161b" stroke="#4b5661"/><text x="240" y="173" text-anchor="middle" font-size="96" fill="url(#b)" font-family="Georgia,serif">ᛉ</text><text x="240" y="285" text-anchor="middle" font-size="26" font-weight="700" fill="#d0b173" font-family="Arial,sans-serif" letter-spacing="2">'+cat+'</text><text x="240" y="335" text-anchor="middle" font-size="32" font-weight="700" fill="#eef1f2" font-family="Arial,sans-serif">'+top+'</text>'+(bottom?'<text x="240" y="372" text-anchor="middle" font-size="28" fill="#c7cdd1" font-family="Arial,sans-serif">'+bottom+'</text>':'')+'</svg>';return 'data:image/svg+xml;charset=UTF-8,'+encodeURIComponent(svg)}
 function productImageFallback(img){const key=String(img.dataset.sku||'').toLowerCase(),base='assets/products/'+key,raw='https://raw.githubusercontent.com/se22ba/ravn-resellers-vape/main/assets/products/'+key,remote=img.dataset.remote||'',fallback=productPlaceholder(img.dataset.name||'Producto',img.dataset.category||'Insumo'),candidates=[base+'.webp',base+'.png',base+'.jpg',base+'.jpeg',raw+'.webp',raw+'.png',raw+'.jpg',raw+'.jpeg',remote,fallback].filter(Boolean);let i=Number(img.dataset.try||0)+1;if(i<candidates.length){img.dataset.try=String(i);img.src=candidates[i]}else{img.onerror=null}}
-function productCard(p){const base='assets/products/'+String(p.sku||'').toLowerCase()+'.webp';return `<article class="product-card"><div class="product-media"><img src="${esc(base)}" alt="${esc(p.name)}" loading="lazy" data-try="0" data-sku="${esc(p.sku)}" data-remote="${esc(p.image_url||'')}" data-name="${esc(p.name)}" data-category="${esc(p.category)}" onerror="productImageFallback(this)"><span>${esc(p.category)}</span></div><div class="product-body"><h3>${esc(p.name)}</h3>${p.price_tiers?.length?`<p class="promo-line">${p.price_tiers.map(t=>`${t.qty}× ${ars(t.total)}`).join(' · ')}</p>`:''}<strong>${ars(p.sale)}</strong><div class="add-row"><div class="qty"><button onclick="qty('pq-${p.id}',-1)">−</button><span id="pq-${p.id}">1</span><button onclick="qty('pq-${p.id}',1)">+</button></div><button class="btn primary icon-only" onclick="addProduct(${p.id})">+</button></div></div></article>`}
+function productCard(p){const base='assets/products/'+String(p.sku||'').toLowerCase()+'.webp';return `<article class="product-card"><div class="product-media"><img src="${esc(base)}" alt="${esc(p.name)}" loading="lazy" data-try="0" data-sku="${esc(p.sku)}" data-remote="${esc(p.image_url||'')}" data-name="${esc(p.name)}" data-category="${esc(p.category)}" onerror="productImageFallback(this)"><span>${esc(p.category)}</span></div><div class="product-body"><h3>${esc(p.name)}</h3>${p.price_tiers?.length?`<p class="promo-line">${p.price_tiers.map(t=>`${t.qty}× ${ars(t.total)}`).join(' · ')}</p>`:''}<strong>${ars(p.sale)}</strong><div class="add-row"><div class="qty"><button onclick="qty('pq-${p.id}',-1)">−</button><span id="pq-${p.id}">1</span><button onclick="qty('pq-${p.id}',1)">+</button></div><button class="btn primary icon-only catalog-add-btn" onclick="addProduct(${p.id})" title="${editingOrderToken?'Sumar al pedido':'Agregar al pedido'}">${editingOrderToken?'＋ Sumar':'+'}</button></div></div></article>`}
 function editOrderWorkspace(){
   const total=cart.reduce((sum,x)=>sum+x.line_total,0);
   const count=cart.reduce((sum,x)=>sum+x.quantity,0);
-  return `<section class="edit-workspace rune-frame">
+  return `<section class="edit-workspace" id="editWorkspace">
+    <div class="edit-mode-flag"><span class="edit-mode-dot"></span><span>EDITANDO PEDIDO</span></div>
     <div class="edit-workspace-copy">
-      <p class="eyebrow">PEDIDO EN EDICIÓN</p>
-      <h1>${esc(editingOrderNumber)}</h1>
-      <p>Podés modificar lo que ya pediste o seguir agregando productos del catálogo. Guardás todo una sola vez al terminar.</p>
+      <b class="edit-workspace-number">${esc(editingOrderNumber)}</b>
+      <span class="edit-workspace-help">Todo lo que agregues modifica este pedido</span>
     </div>
     <div class="edit-workspace-summary">
       <span><b id="editWorkspaceCount">${count}</b> <span id="editWorkspaceCountLabel">${count===1?'ítem':'ítems'}</span></span>
       <strong id="editWorkspaceTotal">${ars(total)}</strong>
     </div>
     <div class="edit-workspace-actions">
-      <button class="btn primary compact" onclick="showCart()">Ver y guardar cambios</button>
-      <button class="btn ghost compact" onclick="cancelOrderEdit()">Cancelar edición</button>
+      <button class="btn primary compact" onclick="showCart()">Ver cambios</button>
+      <button class="edit-bar-cancel" onclick="cancelOrderEdit()" title="Cancelar edición">✕</button>
     </div>
   </section>`;
 }
 function continueEditingOrder(){
   document.querySelector('#cartModal')?.remove();
-  if(location.hash){
-    location.hash='';
-    setTimeout(()=>document.querySelector('.pill-tabs')?.scrollIntoView({behavior:'smooth',block:'start'}),180);
-  }else{
+  const reveal=()=>{
+    syncOrderEditMode();
+    const bar=document.querySelector('#editWorkspace');
+    if(bar){bar.classList.remove('edit-workspace-pulse');void bar.offsetWidth;bar.classList.add('edit-workspace-pulse')}
     document.querySelector('.pill-tabs')?.scrollIntoView({behavior:'smooth',block:'start'});
-  }
+    toast('Seguís editando '+editingOrderNumber+' · lo que agregues se suma a este pedido');
+  };
+  if(location.hash){location.hash='';setTimeout(reveal,220)}else reveal();
 }
-async function shop(){if(!clientToken)return privateWelcome();viewMode('client');document.title='Valhalla Vape';document.querySelector('#app').innerHTML=header()+`<div class="catalog-loading">Cargando catálogo…</div>`;try{const [,orders,me]=await Promise.all([loadCatalog(),req('/client/orders'),req('/client/me')]);clientProfile={...(clientProfile||{}),...me};localStorage.setItem('vv-client-profile',JSON.stringify(clientProfile));document.querySelector('#app').innerHTML=header()+`<main>${editingOrderToken?editOrderWorkspace():`<section class="hero"><div class="hero-overlay"></div><div class="hero-copy"><p class="eyebrow">INSUMOS & E-LIQUIDS</p><h1>Elegí. Armá. <span>Entrá al Valhalla.</span></h1></div></section>${clientOrdersSection(orders)}`}<nav class="pill-tabs"><button class="active" onclick="tab('liquidos',this)">💧 Líquidos</button><button onclick="tab('insumos',this)">▦ Insumos</button><button onclick="tab('promos',this)">✦ Promos</button></nav><section class="section" id="content"></section></main>${footer()}`;tab('liquidos',document.querySelector('.pill-tabs button'))}catch(e){if(!clientToken)return privateWelcome('Tu sesión venció o ya no está autorizada.');const loading=document.querySelector('.catalog-loading');if(loading)loading.textContent='No pudimos conectar con el servidor. '+e.message}}
+async function shop(){if(!clientToken)return privateWelcome();viewMode('client');syncOrderEditMode();document.title='Valhalla Vape';document.querySelector('#app').innerHTML=header()+`<div class="catalog-loading">Cargando catálogo…</div>`;try{const [,orders,me]=await Promise.all([loadCatalog(),req('/client/orders'),req('/client/me')]);clientProfile={...(clientProfile||{}),...me};localStorage.setItem('vv-client-profile',JSON.stringify(clientProfile));syncOrderEditMode();document.querySelector('#app').innerHTML=header()+`<main>${editingOrderToken?editOrderWorkspace():`<section class="hero"><div class="hero-overlay"></div><div class="hero-copy"><p class="eyebrow">INSUMOS & E-LIQUIDS</p><h1>Elegí. Armá. <span>Entrá al Valhalla.</span></h1></div></section>${clientOrdersSection(orders)}`}<nav class="pill-tabs"><button class="active" onclick="tab('liquidos',this)">💧 Líquidos</button><button onclick="tab('insumos',this)">▦ Insumos</button><button onclick="tab('promos',this)">✦ Promos</button></nav><section class="section" id="content"></section></main>${footer()}`;tab('liquidos',document.querySelector('.pill-tabs button'))}catch(e){if(!clientToken)return privateWelcome('Tu sesión venció o ya no está autorizada.');const loading=document.querySelector('.catalog-loading');if(loading)loading.textContent='No pudimos conectar con el servidor. '+e.message}}
 function tab(name,b){document.querySelectorAll('.pill-tabs button').forEach(x=>x.classList.remove('active'));b.classList.add('active');let c=document.querySelector('#content');if(name==='liquidos')c.innerHTML=`<div class="section-title"><p class="eyebrow">ANUBIS E-JUICE</p><h2>Elegí tu líquido</h2><p>Seleccioná línea, sabor, medida y nicotina.</p></div><div class="global-flavor-search"><div class="global-flavor-copy"><p class="eyebrow">ATAJO</p><h3>¿Ya sabés qué querés?</h3><p>Buscá por nombre o por lo que tiene. Ej: Tribeca, banana, tabaco, menta…</p></div><div class="global-flavor-field"><span>⌕</span><input id="globalFlavorSearch" type="search" inputmode="search" autocomplete="off" placeholder="Buscar sabor o ingrediente…" oninput="searchAllFlavors(this.value)" onfocus="searchAllFlavors(this.value)"></div><div id="globalFlavorResults" class="global-flavor-results"></div></div><div class="liquid-grid">${catalog.liquid_lines.map(liquidCard).join('')}</div>`;else{let promo=name==='promos',ps=catalog.products.filter(p=>promo?p.category.toLowerCase().includes('promo'):!p.category.toLowerCase().includes('promo')),cats=[...new Set(ps.map(p=>p.category))];c.innerHTML=`<div class="section-title"><p class="eyebrow">CATÁLOGO</p><h2>${promo?'Promociones':'Equipos & insumos'}</h2><p>${promo?'Promociones directas de Anubis.':'Precios finales, sin recargo.'}</p></div>${cats.map(cat=>`<div class="category-block"><h3>${esc(cat)}</h3><div class="products-grid">${ps.filter(p=>p.category===cat).map(productCard).join('')}</div></div>`).join('')}`}}
 function cartItemEditor(x,i){
   if(x.kind==='liquid'){
@@ -211,29 +217,30 @@ function showCart(){
   let total=cart.reduce((s,x)=>s+x.line_total,0);
   const editing=!!editingOrderToken;
   const items=cart.length
-    ?cart.map((x,i)=>`<div class="cart-item cart-item-editable" id="cart-row-${i}"><div class="cart-item-main"><div><b>${x.quantity}× ${esc(x.name)}</b><small>${ars(x.line_total)}</small></div><div class="cart-item-actions"><button class="link-btn" onclick="editCartItem(${i})">Editar</button><button class="link-btn danger" onclick="removeCartItem(${i})">Quitar</button></div></div><div class="cart-edit-slot"></div></div>`).join('')
+    ?cart.map((x,i)=>`<div class="cart-item cart-item-editable" id="cart-row-${i}"><div class="cart-item-main"><div class="cart-item-info"><b>${x.quantity}× ${esc(x.name)}</b><small>${ars(x.line_total)}</small></div><div class="cart-item-actions"><button class="link-btn" onclick="editCartItem(${i})">Editar</button><button class="link-btn danger" onclick="removeCartItem(${i})">Quitar</button></div></div><div class="cart-edit-slot"></div></div>`).join('')
     :'<div class="cart-empty-edit"><p>No hay productos en este pedido.</p><small>Agregá al menos uno antes de guardar.</small></div>';
 
   const editActions=editing
     ?`<div class="edit-cart-actions">
-        <button class="btn ghost full add-more-order-btn" onclick="continueEditingOrder()">＋ Agregar más productos</button>
+        <button class="btn ghost full add-more-order-btn" onclick="continueEditingOrder()">＋ Seguir agregando productos</button>
         <button class="btn primary full save-order-changes" ${cart.length?'':'disabled'} onclick="sendOrder(this)">Guardar cambios</button>
-        <button class="link-btn cancel-edit-link" onclick="cancelOrderEdit()">Cancelar edición</button>
+        <button class="link-btn cancel-edit-link" onclick="cancelOrderEdit()">Descartar cambios</button>
       </div>
       <div class="edit-danger-zone">
-        <span>¿Querés eliminar el pedido completo?</span>
-        <button class="link-btn danger" onclick="deleteOrder('${editingOrderToken}')">Eliminar pedido</button>
+        <span>Acción irreversible</span>
+        <button class="link-btn danger" onclick="deleteOrder('${editingOrderToken}')">Eliminar pedido completo</button>
       </div>`
     :`<button class="btn primary full" ${cart.length?'':'disabled'} onclick="location.hash='checkout';document.querySelector('#cartModal').remove()">Continuar</button>`;
 
-  const html=`<div class="modal-scrim" id="cartModal"><div class="batch-modal cart-modal rune-frame">
-    <button class="modal-close" onclick="document.querySelector('#cartModal').remove()">✕</button>
-    <p class="eyebrow">${editing?'EDITANDO PEDIDO':'TU PEDIDO'}</p>
-    <h2>${editing?'Editar '+esc(editingOrderNumber):'Carrito'}</h2>
-    ${editing?'<div class="notice edit-notice">Modificá, quitá o agregá productos. Cuando termines, guardá una sola vez.</div>':''}
-    ${items}
-    <div class="total-line"><span>Subtotal</span><strong>${ars(total)}</strong></div>
-    <p class="muted">El envío se agrega después de revisar el pedido.</p>
+  const html=`<div class="modal-scrim" id="cartModal"><div class="batch-modal cart-modal rune-frame ${editing?'cart-modal-editing':''}">
+    <button class="modal-close" onclick="document.querySelector('#cartModal').remove()" aria-label="Cerrar">✕</button>
+    ${editing
+      ?`<div class="edit-modal-head"><div><p class="eyebrow">PEDIDO EN EDICIÓN</p><h2>Cambios del pedido</h2></div><span class="edit-order-pill">${esc(editingOrderNumber)}</span></div>
+         <p class="edit-modal-intro">Modificá, quitá o agregá productos. Nada se aplica al pedido hasta que presiones <b>Guardar cambios</b>.</p>`
+      :`<p class="eyebrow">TU PEDIDO</p><h2>Carrito</h2>`}
+    <div class="cart-items-list">${items}</div>
+    <div class="edit-cart-summary"><span>Subtotal</span><strong>${ars(total)}</strong></div>
+    <p class="muted cart-shipping-note">El envío se agrega después de revisar el pedido.</p>
     ${editActions}
   </div></div>`;
   document.body.insertAdjacentHTML('beforeend',html);
@@ -278,7 +285,7 @@ async function startOrderEdit(token){
       }
     }
     if(!rebuilt.length){toast('No se pudieron cargar los productos del pedido');return}
-    sessionStorage.setItem('vv-edit-cart-backup',JSON.stringify(cart));editingOrderToken=token;editingOrderNumber=o.number;sessionStorage.setItem('vv-edit-order-token',token);sessionStorage.setItem('vv-edit-order-number',o.number);cart=rebuilt;saveCart();updateCartCount();location.hash='';setTimeout(()=>showCart(),220);
+    sessionStorage.setItem('vv-edit-cart-backup',JSON.stringify(cart));editingOrderToken=token;editingOrderNumber=o.number;sessionStorage.setItem('vv-edit-order-token',token);sessionStorage.setItem('vv-edit-order-number',o.number);cart=rebuilt;saveCart();syncOrderEditMode();updateCartCount();location.hash='';setTimeout(()=>showCart(),220);
   }catch(e){toast(e.message)}
 }
 async function deleteOrder(token){
