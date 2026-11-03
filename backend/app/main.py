@@ -1,7 +1,7 @@
 from collections import defaultdict
 from datetime import datetime
 import csv, io
-from fastapi import FastAPI, Depends, HTTPException, Response
+from fastapi import FastAPI, Depends, HTTPException, Response, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
@@ -21,6 +21,7 @@ from .auth import (
     login, require_admin, login_client, require_client,
     normalize_username, normalize_phone, hash_password, seed_admins
 )
+from .notifications import send_new_order_email
 
 settings = get_settings()
 app = FastAPI(title="Private API", version="1.1.0", docs_url=None, redoc_url=None, openapi_url=None)
@@ -128,7 +129,7 @@ def catalog(client: dict=Depends(require_client), db: Session=Depends(get_db)):
     }
 
 @app.post("/api/orders")
-def create_order(payload: OrderCreate, client: dict=Depends(require_client), db: Session=Depends(get_db)):
+def create_order(payload: OrderCreate, background_tasks: BackgroundTasks, client: dict=Depends(require_client), db: Session=Depends(get_db)):
     order=Order(number="TEMP",customer_name=client["username"],status="received")
     db.add(order); db.flush(); order.number=f"VV-{datetime.utcnow():%y%m%d}-{order.id:04d}"
     db.add(OrderClientAccess(order_id=order.id, client_id=client["id"]))
@@ -158,7 +159,15 @@ def create_order(payload: OrderCreate, client: dict=Depends(require_client), db:
     db.add(OrderEvent(order_id=order.id,event_type="created",detail=f"Pedido recibido desde la cuenta {client['username']}"))
     db.commit()
     order=db.query(Order).options(joinedload(Order.items),joinedload(Order.events)).filter(Order.id==order.id).first()
-    return order_view(order,public=True)
+    view=order_view(order,public=True)
+    background_tasks.add_task(
+        send_new_order_email,
+        order.number,
+        order.customer_name,
+        view["total"],
+        [{"quantity":i["quantity"],"name":i["name"],"line_total":i["line_total_sale"]} for i in view["items"]],
+    )
+    return view
 
 @app.get("/api/orders/public/{token}")
 def public_order(token: str, client: dict=Depends(require_client), db: Session=Depends(get_db)):
