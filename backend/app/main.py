@@ -21,7 +21,7 @@ from .auth import (
     login, require_admin, login_client, require_client,
     normalize_username, normalize_phone, hash_password, seed_admins
 )
-from .notifications import send_new_order_email, send_payment_reported_email, send_client_status_email
+from .notifications import send_new_order_email, send_order_edited_email, send_payment_reported_email, send_client_status_email
 
 settings = get_settings()
 app = FastAPI(title="Private API", version="1.1.0", docs_url=None, redoc_url=None, openapi_url=None)
@@ -215,7 +215,7 @@ def public_order(token: str, client: dict=Depends(require_client), db: Session=D
     return order_view(order,public=True)
 
 @app.put("/api/orders/public/{token}")
-def edit_public_order(token: str, payload: OrderCreate, client: dict=Depends(require_client), db: Session=Depends(get_db)):
+def edit_public_order(token: str, payload: OrderCreate, background_tasks: BackgroundTasks, client: dict=Depends(require_client), db: Session=Depends(get_db)):
     order=db.query(Order).options(joinedload(Order.items),joinedload(Order.events)).filter(Order.public_token==token).first()
     if not order: raise HTTPException(404,"Pedido no encontrado")
     ensure_client_order(db,order,client)
@@ -255,7 +255,16 @@ def edit_public_order(token: str, payload: OrderCreate, client: dict=Depends(req
     db.add(OrderEvent(order_id=order.id,event_type="client_edited",detail="Pedido modificado por el cliente"))
     db.commit()
     order=db.query(Order).options(joinedload(Order.items),joinedload(Order.events)).filter(Order.id==order.id).first()
-    return order_view(order,public=True)
+    view=order_view(order,public=True)
+    background_tasks.add_task(
+        send_order_edited_email,
+        order.id,
+        order.number,
+        order.customer_name,
+        view["total"],
+        [{"quantity":i["quantity"],"name":i["name"],"line_total":i["line_total_sale"]} for i in view["items"]],
+    )
+    return view
 
 @app.delete("/api/orders/public/{token}")
 def delete_public_order(token: str, client: dict=Depends(require_client), db: Session=Depends(get_db)):
@@ -409,6 +418,11 @@ def patch_order(order_id:int,payload:OrderAdminPatch,background_tasks:Background
             background_tasks.add_task(
                 send_client_status_email,customer.email,order.public_token,order.number,order.customer_name,
                 status_change[0],status_change[1],view["total"]
+            )
+        else:
+            logging.getLogger("valhalla.notifications").warning(
+                "Cambio de estado sin email de cliente: pedido=%s cliente=%s",
+                order.number, order.customer_name
             )
     return view
 
