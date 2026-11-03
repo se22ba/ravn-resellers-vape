@@ -10,16 +10,16 @@ from .config import get_settings
 from .db import Base, engine, get_db, SessionLocal
 from .models import (
     LiquidLine, LiquidPrice, LiquidFlavor, Product, Order, OrderItem, OrderEvent,
-    SupplierBatch, ClientAccess, OrderClientAccess
+    SupplierBatch, ClientAccess, OrderClientAccess, AdminUser
 )
 from .schemas import (
     OrderCreate, ClientLogin, ClientCreate, ClientPatch,
-    AdminLogin, OrderAdminPatch, BatchCreate
+    AdminLogin, AdminUserCreate, AdminUserPatch, OrderAdminPatch, BatchCreate
 )
 from .seed import seed
 from .auth import (
     login, require_admin, login_client, require_client,
-    normalize_username, normalize_phone
+    normalize_username, normalize_phone, hash_password, seed_admins
 )
 
 settings = get_settings()
@@ -89,7 +89,9 @@ def startup():
             conn.exec_driver_sql(f'CREATE SCHEMA IF NOT EXISTS "{safe_schema}"')
     Base.metadata.create_all(bind=engine)
     db=SessionLocal()
-    try: seed(db)
+    try:
+        seed(db)
+        seed_admins(db)
     finally: db.close()
 
 @app.get("/api/health")
@@ -232,7 +234,49 @@ def payment_reported(token: str, client: dict=Depends(require_client), db: Sessi
     db.commit(); return {"ok":True}
 
 @app.post("/api/admin/login")
-def admin_login(payload: AdminLogin): return {"token":login(payload.username, payload.password)}
+def admin_login(payload: AdminLogin, db: Session=Depends(get_db)): return {"token":login(payload.username, payload.password, db)}
+
+@app.get("/api/admin/users/admins")
+def admin_users(admin: dict=Depends(require_admin), db: Session=Depends(get_db)):
+    rows=db.query(AdminUser).order_by(AdminUser.username).all()
+    return [{"id":a.id,"username":a.username,"active":a.active,"created_at":a.created_at.isoformat(),"current":a.id==admin["id"]} for a in rows]
+
+@app.post("/api/admin/users/admins")
+def admin_create_user(payload: AdminUserCreate, admin: dict=Depends(require_admin), db: Session=Depends(get_db)):
+    username=normalize_username(payload.username)
+    if db.query(AdminUser).filter(AdminUser.username==username).first():
+        raise HTTPException(409,"Ese administrador ya existe")
+    row=AdminUser(username=username,password_hash=hash_password(payload.password),active=True)
+    db.add(row)
+    try:
+        db.commit(); db.refresh(row)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409,"Ese administrador ya existe")
+    return {"id":row.id,"username":row.username,"active":row.active,"created_at":row.created_at.isoformat(),"current":False}
+
+@app.patch("/api/admin/users/admins/{admin_id}")
+def admin_patch_user(admin_id:int,payload:AdminUserPatch,admin:dict=Depends(require_admin),db:Session=Depends(get_db)):
+    row=db.get(AdminUser,admin_id)
+    if not row: raise HTTPException(404,"Administrador no encontrado")
+    if payload.active is False and row.id==admin["id"]:
+        raise HTTPException(409,"No podés bloquear tu propia cuenta")
+    if payload.active is False and row.active:
+        active_count=db.query(AdminUser).filter(AdminUser.active==True).count()
+        if active_count<=1:
+            raise HTTPException(409,"Debe quedar al menos un administrador activo")
+    if payload.username is not None:
+        row.username=normalize_username(payload.username)
+    if payload.password is not None:
+        row.password_hash=hash_password(payload.password)
+    if payload.active is not None:
+        row.active=payload.active
+    try:
+        db.commit(); db.refresh(row)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409,"Ese nombre de administrador ya está en uso")
+    return {"id":row.id,"username":row.username,"active":row.active,"created_at":row.created_at.isoformat(),"current":row.id==admin["id"]}
 
 @app.get("/api/admin/catalog",dependencies=[Depends(require_admin)])
 def admin_catalog(db: Session=Depends(get_db)):
