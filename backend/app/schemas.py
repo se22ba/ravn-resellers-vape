@@ -29,6 +29,16 @@ class AdminLogin(BaseModel):
     username: str
     password: str
 
+
+class AdminUserCreate(BaseModel):
+    username: str = Field(min_length=2, max_length=80)
+    password: str = Field(min_length=6, max_length=128)
+
+class AdminUserPatch(BaseModel):
+    username: str | None = Field(default=None, min_length=2, max_length=80)
+    password: str | None = Field(default=None, min_length=6, max_length=128)
+    active: bool | None = None
+
 class OrderAdminPatch(BaseModel):
     status: str | None = None
     shipping: float | None = Field(default=None, ge=0)
