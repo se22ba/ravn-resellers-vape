@@ -1,4 +1,5 @@
 from collections import defaultdict
+import logging
 from datetime import datetime
 import csv, io, re
 from fastapi import FastAPI, Depends, HTTPException, Response, BackgroundTasks
