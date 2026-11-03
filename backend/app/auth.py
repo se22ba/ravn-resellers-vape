@@ -107,7 +107,7 @@ def login_client(username: str, phone: str, db: Session) -> dict:
         "iat": now,
         "exp": now + timedelta(days=30)
     }, settings.jwt_secret, algorithm="HS256")
-    return {"token": token, "client": {"id": client.id, "username": client.username}}
+    return {"token": token, "client": {"id": client.id, "username": client.username, "email": client.email}}
 
 def require_client(authorization: str | None = Header(default=None), db: Session = Depends(get_db)) -> dict:
     if not authorization or not authorization.startswith("Bearer "):
@@ -122,4 +122,4 @@ def require_client(authorization: str | None = Header(default=None), db: Session
     client = db.query(ClientAccess).filter(ClientAccess.id == client_id, ClientAccess.active == True).first()
     if not client:
         raise HTTPException(status_code=401, detail="Cliente no autorizado")
-    return {"id": client.id, "username": client.username, "phone": client.phone}
+    return {"id": client.id, "username": client.username, "phone": client.phone, "email": client.email}
