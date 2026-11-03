@@ -27,6 +27,9 @@ class ClientPatch(BaseModel):
     email: str | None = Field(default=None, max_length=254)
     active: bool | None = None
 
+class ClientEmailUpdate(BaseModel):
+    email: str | None = Field(default=None, max_length=254)
+
 class AdminLogin(BaseModel):
     username: str
     password: str
