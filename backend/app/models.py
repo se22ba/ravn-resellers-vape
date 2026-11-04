@@ -50,6 +50,7 @@ class Order(Base):
     number: Mapped[str] = mapped_column(String(30), unique=True, index=True)
     public_token: Mapped[str] = mapped_column(String(64), unique=True, index=True, default=lambda: uuid.uuid4().hex)
     customer_name: Mapped[str] = mapped_column(String(120))
+    order_type: Mapped[str] = mapped_column(String(20), default="customer", server_default="customer", index=True)
     status: Mapped[str] = mapped_column(String(40), default="received", index=True)
     shipping: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
     payment_reported_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
