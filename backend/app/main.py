@@ -52,6 +52,10 @@ def client_for_order(db: Session, order_id: int) -> ClientAccess | None:
         .filter(OrderClientAccess.order_id == order_id)
         .first())
 
+def require_personal_order_admin(admin: dict):
+    if (admin.get("username") or "").lower() not in settings.personal_order_admin_list:
+        raise HTTPException(403, "Tu usuario no está habilitado para pedidos personales")
+
 def ensure_optional_email_column():
     schema=settings.db_schema if engine.dialect.name=="postgresql" else None
     inspector=inspect(engine)
@@ -66,6 +70,20 @@ def ensure_optional_email_column():
     with engine.begin() as conn:
         conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN email VARCHAR(254)")
 
+def ensure_order_type_column():
+    schema=settings.db_schema if engine.dialect.name=="postgresql" else None
+    inspector=inspect(engine)
+    columns={c["name"] for c in inspector.get_columns("orders", schema=schema)}
+    if "order_type" in columns:
+        return
+    if schema:
+        safe_schema=schema.replace('"','""')
+        table=f'"{safe_schema}"."orders"'
+    else:
+        table="orders"
+    with engine.begin() as conn:
+        conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN order_type VARCHAR(20) NOT NULL DEFAULT 'customer'")
+
 def tier_total(product: Product, qty: int) -> float:
     tiers = sorted(product.price_tiers or [], key=lambda x: int(x["qty"]), reverse=True)
     if not tiers: return money(product.sale) * qty
@@ -76,13 +94,23 @@ def tier_total(product: Product, qty: int) -> float:
     if remaining: total += remaining * money(product.sale)
     return total
 
+def cost_tier_total(product: Product, qty: int) -> float:
+    tiers = sorted(product.price_tiers or [], key=lambda x: int(x["qty"]), reverse=True)
+    if not tiers: return money(product.cost) * qty
+    remaining, total = qty, 0.0
+    for t in tiers:
+        pack = int(t["qty"]); count = remaining // pack
+        total += count * float(t["total"]); remaining -= count * pack
+    if remaining: total += remaining * money(product.cost)
+    return total
+
 def order_view(order: Order, public=False):
     subtotal = sum(money(i.line_total_sale) for i in order.items)
     cost = sum(money(i.line_total_cost) for i in order.items)
     shipping = money(order.shipping)
     data = {
         "id": order.id, "number": order.number, "public_token": order.public_token,
-        "customer_name": order.customer_name, "status": order.status,
+        "customer_name": order.customer_name, "order_type": order.order_type, "internal": order.order_type=="internal", "status": order.status,
         "status_label": STATUS_LABELS.get(order.status, order.status),
         "editable": order.status in CLIENT_EDITABLE_STATUSES,
         "shipping": shipping, "subtotal": subtotal, "total": subtotal + shipping,
@@ -119,6 +147,7 @@ def startup():
             conn.exec_driver_sql(f'CREATE SCHEMA IF NOT EXISTS "{safe_schema}"')
     Base.metadata.create_all(bind=engine)
     ensure_optional_email_column()
+    ensure_order_type_column()
     db=SessionLocal()
     try:
         seed(db)
@@ -168,7 +197,7 @@ def catalog(client: dict=Depends(require_client), db: Session=Depends(get_db)):
 
 @app.post("/api/orders")
 def create_order(payload: OrderCreate, background_tasks: BackgroundTasks, client: dict=Depends(require_client), db: Session=Depends(get_db)):
-    order=Order(number="TEMP",customer_name=client["username"],status="received")
+    order=Order(number="TEMP",customer_name=client["username"],order_type="customer",status="received")
     db.add(order); db.flush(); order.number=f"VV-{datetime.utcnow():%y%m%d}-{order.id:04d}"
     db.add(OrderClientAccess(order_id=order.id, client_id=client["id"]))
     for it in payload.items:
@@ -338,6 +367,62 @@ def admin_patch_user(admin_id:int,payload:AdminUserPatch,admin:dict=Depends(requ
         raise HTTPException(409,"Ese nombre de administrador ya está en uso")
     return {"id":row.id,"username":row.username,"active":row.active,"created_at":row.created_at.isoformat(),"current":row.id==admin["id"]}
 
+@app.get("/api/admin/me")
+def admin_me(admin: dict=Depends(require_admin)):
+    return {
+        "id": admin["id"],
+        "username": admin["username"],
+        "personal_order_enabled": (admin["username"] or "").lower() in settings.personal_order_admin_list,
+    }
+
+@app.post("/api/admin/personal/orders")
+def create_personal_order(payload: OrderCreate, admin: dict=Depends(require_admin), db: Session=Depends(get_db)):
+    require_personal_order_admin(admin)
+    order=Order(number="TEMP",customer_name=admin["username"],order_type="internal",status="received")
+    db.add(order); db.flush(); order.number=f"VP-{datetime.utcnow():%y%m%d}-{order.id:04d}"
+
+    for it in payload.items:
+        if it.kind=="liquid":
+            line=db.query(LiquidLine).filter(LiquidLine.slug==it.line_slug,LiquidLine.active==True).first()
+            if not line or not it.flavor or it.size_ml is None or it.nicotine_mg is None:
+                raise HTTPException(400,"Líquido incompleto")
+            if it.nicotine_mg not in (line.nicotine_options or []):
+                raise HTTPException(400,"MG de nicotina no válido")
+            fl=db.query(LiquidFlavor).filter(
+                LiquidFlavor.line_id==line.id,
+                func.lower(LiquidFlavor.name)==it.flavor.lower(),
+                LiquidFlavor.active==True
+            ).first()
+            price=db.query(LiquidPrice).filter(LiquidPrice.line_id==line.id,LiquidPrice.size_ml==it.size_ml).first()
+            if not fl or not price: raise HTTPException(400,"Sabor o medida no válido")
+            unit=money(price.cost); total=unit*it.quantity
+            db.add(OrderItem(
+                order_id=order.id,kind="liquid",reference_id=line.id,
+                snapshot_name=f"{line.name} · {fl.name} · {it.size_ml}ml · {it.nicotine_mg}mg",
+                line_name=line.name,flavor=fl.name,size_ml=it.size_ml,nicotine_mg=it.nicotine_mg,
+                quantity=it.quantity,unit_cost=unit,unit_sale=unit,
+                line_total_cost=total,line_total_sale=total
+            ))
+        elif it.kind=="product":
+            p=db.get(Product,it.reference_id)
+            if not p or not p.active: raise HTTPException(400,"Producto no válido")
+            total=cost_tier_total(p,it.quantity); unit=total/it.quantity
+            db.add(OrderItem(
+                order_id=order.id,kind="product",reference_id=p.id,snapshot_name=p.name,
+                quantity=it.quantity,unit_cost=unit,unit_sale=unit,
+                line_total_cost=total,line_total_sale=total
+            ))
+        else:
+            raise HTTPException(400,"Tipo de item no válido")
+
+    db.add(OrderEvent(
+        order_id=order.id,event_type="internal_created",
+        detail=f"Pedido personal creado por {admin['username']} a precio de costo"
+    ))
+    db.commit()
+    order=db.query(Order).options(joinedload(Order.items),joinedload(Order.events)).filter(Order.id==order.id).first()
+    return order_view(order)
+
 @app.get("/api/admin/catalog",dependencies=[Depends(require_admin)])
 def admin_catalog(db: Session=Depends(get_db)):
     lines=db.query(LiquidLine).options(joinedload(LiquidLine.flavors),joinedload(LiquidLine.prices)).filter(LiquidLine.active==True).all()
@@ -413,7 +498,7 @@ def patch_order(order_id:int,payload:OrderAdminPatch,background_tasks:Background
     db.commit()
     order=db.query(Order).options(joinedload(Order.items),joinedload(Order.events)).filter(Order.id==order.id).first()
     view=order_view(order)
-    if status_change:
+    if status_change and order.order_type!="internal":
         customer=client_for_order(db,order.id)
         if customer and customer.email:
             background_tasks.add_task(
@@ -429,7 +514,9 @@ def patch_order(order_id:int,payload:OrderAdminPatch,background_tasks:Background
 
 @app.get("/api/admin/metrics",dependencies=[Depends(require_admin)])
 def metrics(db: Session=Depends(get_db)):
-    orders=db.query(Order).options(joinedload(Order.items)).filter(Order.status!="cancelled").all()
+    orders=db.query(Order).options(joinedload(Order.items)).filter(
+        Order.status!="cancelled", Order.order_type=="customer"
+    ).all()
     sales=sum(sum(money(i.line_total_sale) for i in o.items) for o in orders)
     cost=sum(sum(money(i.line_total_cost) for i in o.items) for o in orders)
     shipping=sum(money(o.shipping) for o in orders)
@@ -451,6 +538,8 @@ def create_batch(payload:BatchCreate,background_tasks:BackgroundTasks,db:Session
             db.add(OrderEvent(order_id=o.id,event_type="supplier_batch",detail=f"Incluido en {batch.number}"))
     db.commit(); db.refresh(batch)
     for o,old,new in changed:
+        if o.order_type=="internal":
+            continue
         customer=client_for_order(db,o.id)
         if customer and customer.email:
             total=sum(money(i.line_total_sale) for i in o.items)+money(o.shipping)
