@@ -17,11 +17,15 @@ class Settings(BaseSettings):
     notification_webhook_url: str = ""
     valhalla_secret: str = ""
     admin_notification_email: str = "lspafundi@gmail.com"
+    personal_order_admins: str = "spafundi"
     public_app_url: str = "https://valhalla-vape.onrender.com/"
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
     @property
     def cors_list(self) -> list[str]:
         return [x.strip() for x in self.cors_origins.split(",") if x.strip()]
+    @property
+    def personal_order_admin_list(self) -> list[str]:
+        return [x.strip().lower() for x in self.personal_order_admins.split(",") if x.strip()]
 
 @lru_cache
 def get_settings() -> Settings:
