@@ -423,6 +423,59 @@ def create_personal_order(payload: OrderCreate, admin: dict=Depends(require_admi
     order=db.query(Order).options(joinedload(Order.items),joinedload(Order.events)).filter(Order.id==order.id).first()
     return order_view(order)
 
+@app.put("/api/admin/personal/orders/{order_id}")
+def edit_personal_order(order_id: int, payload: OrderCreate, admin: dict=Depends(require_admin), db: Session=Depends(get_db)):
+    require_personal_order_admin(admin)
+    order=db.query(Order).options(joinedload(Order.items),joinedload(Order.events)).filter(Order.id==order_id).first()
+    if not order or order.order_type!="internal":
+        raise HTTPException(404,"Pedido personal no encontrado")
+    if order.customer_name.lower()!=admin["username"].lower():
+        raise HTTPException(403,"Este pedido personal pertenece a otro administrador")
+    if order.status not in CLIENT_EDITABLE_STATUSES:
+        raise HTTPException(409,"El pedido ya fue enviado al proveedor y no puede modificarse")
+
+    new_items=[]
+    for it in payload.items:
+        if it.kind=="liquid":
+            line=db.query(LiquidLine).filter(LiquidLine.slug==it.line_slug,LiquidLine.active==True).first()
+            if not line or not it.flavor or it.size_ml is None or it.nicotine_mg is None:
+                raise HTTPException(400,"Líquido incompleto")
+            if it.nicotine_mg not in (line.nicotine_options or []):
+                raise HTTPException(400,"MG de nicotina no válido")
+            fl=db.query(LiquidFlavor).filter(
+                LiquidFlavor.line_id==line.id,
+                func.lower(LiquidFlavor.name)==it.flavor.lower(),
+                LiquidFlavor.active==True
+            ).first()
+            price=db.query(LiquidPrice).filter(LiquidPrice.line_id==line.id,LiquidPrice.size_ml==it.size_ml).first()
+            if not fl or not price: raise HTTPException(400,"Sabor o medida no válido")
+            unit=money(price.cost); total=unit*it.quantity
+            new_items.append(OrderItem(
+                order_id=order.id,kind="liquid",reference_id=line.id,
+                snapshot_name=f"{line.name} · {fl.name} · {it.size_ml}ml · {it.nicotine_mg}mg",
+                line_name=line.name,flavor=fl.name,size_ml=it.size_ml,nicotine_mg=it.nicotine_mg,
+                quantity=it.quantity,unit_cost=unit,unit_sale=unit,
+                line_total_cost=total,line_total_sale=total
+            ))
+        elif it.kind=="product":
+            p=db.get(Product,it.reference_id)
+            if not p or not p.active: raise HTTPException(400,"Producto no válido")
+            total=cost_tier_total(p,it.quantity); unit=total/it.quantity
+            new_items.append(OrderItem(
+                order_id=order.id,kind="product",reference_id=p.id,snapshot_name=p.name,
+                quantity=it.quantity,unit_cost=unit,unit_sale=unit,
+                line_total_cost=total,line_total_sale=total
+            ))
+        else:
+            raise HTTPException(400,"Tipo de item no válido")
+
+    db.query(OrderItem).filter(OrderItem.order_id==order.id).delete(synchronize_session=False)
+    db.flush(); db.add_all(new_items)
+    db.add(OrderEvent(order_id=order.id,event_type="internal_edited",detail=f"Pedido personal modificado por {admin['username']}"))
+    db.commit()
+    order=db.query(Order).options(joinedload(Order.items),joinedload(Order.events)).filter(Order.id==order.id).first()
+    return order_view(order)
+
 @app.get("/api/admin/catalog",dependencies=[Depends(require_admin)])
 def admin_catalog(db: Session=Depends(get_db)):
     lines=db.query(LiquidLine).options(joinedload(LiquidLine.flavors),joinedload(LiquidLine.prices)).filter(LiquidLine.active==True).all()
