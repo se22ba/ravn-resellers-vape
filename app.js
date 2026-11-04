@@ -16,6 +16,11 @@ const ars=n=>new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',maxi
 const esc=s=>String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 function safeJSON(key,fallback){try{return JSON.parse(localStorage.getItem(key)||JSON.stringify(fallback))}catch{localStorage.removeItem(key);return fallback}}
 let catalog=null, editingOrderToken=sessionStorage.getItem('vv-edit-order-token')||'', editingOrderNumber=sessionStorage.getItem('vv-edit-order-number')||'', adminToken=sessionStorage.getItem('vv-admin')||'', clientToken=localStorage.getItem('vv-client')||'', clientProfile=safeJSON('vv-client-profile',null), cart=[];
+let personalCatalog=null,
+    personalCart=safeJSONSession('vv-personal-cart',[]),
+    personalEditingOrderId=Number(sessionStorage.getItem('vv-personal-edit-id')||0),
+    personalEditingOrderNumber=sessionStorage.getItem('vv-personal-edit-number')||'';
+
 function clientCartKey(profile=clientProfile){return profile?.id?`vv-cart-client-${profile.id}`:'vv-cart'}
 function loadClientCart(profile=clientProfile){
   const key=clientCartKey(profile);
@@ -304,7 +309,7 @@ const ADMIN_ACTIVE_STATUSES=new Set(['received','reviewed','awaiting_payment','p
 function setAdminTab(tab){adminTab=tab==='history'?'history':'active';admin()}
 function adminSectionNav(activeCount=0,historyCount=0,current='orders'){return `<nav class="admin-section-nav" aria-label="Administración"><button class="admin-section-tab ${current==='orders'&&adminTab==='active'?'active':''}" onclick="setAdminTab('active')"><span>Pedidos</span><b>${activeCount}</b></button><button class="admin-section-tab ${current==='orders'&&adminTab==='history'?'active':''}" onclick="setAdminTab('history')"><span>Historial</span><b>${historyCount}</b></button><a class="admin-section-tab ${current==='users'?'active':''}" href="#admin-users"><span>Usuarios</span></a></nav>`}
 function adminEmptyState(history=false){return `<div class="admin-empty-state"><span>${history?'ᚺ':'ᚱ'}</span><h3>${history?'Todavía no hay historial':'No hay pedidos pendientes'}</h3><p>${history?'Los pedidos entregados y cancelados van a aparecer acá.':'Cuando ingrese un pedido nuevo, va a aparecer en esta vista.'}</p></div>`}
-async function admin(focusId=null){if(!adminToken)return adminLogin();viewMode('admin');document.title='Salón del Jarl';document.querySelector('#app').innerHTML=header(true)+`<div class="catalog-loading">Cargando administración…</div>`;try{let [orders,m]=await Promise.all([req('/admin/orders',{headers:{Authorization:'Bearer '+adminToken}}),req('/admin/metrics',{headers:{Authorization:'Bearer '+adminToken}})]);const activeOrders=orders.filter(o=>ADMIN_ACTIVE_STATUSES.has(o.status)),historyOrders=orders.filter(o=>!ADMIN_ACTIVE_STATUSES.has(o.status));if(focusId){const target=orders.find(o=>o.id===+focusId);if(target)adminTab=ADMIN_ACTIVE_STATUSES.has(target.status)?'active':'history'}const shown=adminTab==='history'?historyOrders:activeOrders;document.querySelector('#app').innerHTML=header(true)+`<main class="admin-panel"><div class="admin-title"><div><p class="eyebrow">VALHALLA CONTROL</p><h1>${adminTab==='history'?'Historial':'Pedidos'}</h1></div><div class="admin-title-actions"><a class="btn primary compact" href="#admin-catalog">Catálogo completo</a><button class="btn ghost compact" onclick="admin()">Actualizar</button></div></div><div class="metrics"><div><span>Nuevos</span><b>${m.new}</b></div><div><span>Venta</span><b>${ars(m.sales)}</b></div><div><span>Costo</span><b>${ars(m.cost)}</b></div><div class="profit"><span>Ganancia</span><b>${ars(m.profit)}</b></div></div>${adminSectionNav(activeOrders.length,historyOrders.length,'orders')}${adminTab==='active'?'<div class="admin-actions"><span id="selCount">0 seleccionados</span><button class="btn primary compact" onclick="createBatch()">Crear pedido a Anubis</button></div>':''}<div class="admin-grid ${adminTab==='history'?'history-grid':''}">${shown.length?shown.map(o=>adminOrder(o,adminTab==='history')).join(''):adminEmptyState(adminTab==='history')}</div></main>`;if(focusId){requestAnimationFrame(()=>{const el=document.querySelector(`#admin-order-${focusId}`);if(el){el.classList.add('order-focus');el.scrollIntoView({behavior:'smooth',block:'center'})}})}}catch(e){adminToken='';sessionStorage.removeItem('vv-admin');adminLogin()}}
+async function admin(focusId=null){if(!adminToken)return adminLogin();viewMode('admin');document.title='Salón del Jarl';document.querySelector('#app').innerHTML=header(true)+`<div class="catalog-loading">Cargando administración…</div>`;try{let [orders,m,me]=await Promise.all([req('/admin/orders',{headers:{Authorization:'Bearer '+adminToken}}),req('/admin/metrics',{headers:{Authorization:'Bearer '+adminToken}}),req('/admin/me',{headers:{Authorization:'Bearer '+adminToken}})]);const activeOrders=orders.filter(o=>ADMIN_ACTIVE_STATUSES.has(o.status)),historyOrders=orders.filter(o=>!ADMIN_ACTIVE_STATUSES.has(o.status));if(focusId){const target=orders.find(o=>o.id===+focusId);if(target)adminTab=ADMIN_ACTIVE_STATUSES.has(target.status)?'active':'history'}const shown=adminTab==='history'?historyOrders:activeOrders;document.querySelector('#app').innerHTML=header(true)+`<main class="admin-panel"><div class="admin-title"><div><p class="eyebrow">VALHALLA CONTROL</p><h1>${adminTab==='history'?'Historial':'Pedidos'}</h1></div><div class="admin-title-actions">${me.personal_order_enabled?'<a class="btn personal-order-entry compact" href="#admin-personal">⚔ Pedido personal</a>':''}<a class="btn primary compact" href="#admin-catalog">Catálogo completo</a><button class="btn ghost compact" onclick="admin()">Actualizar</button></div></div><div class="metrics"><div><span>Nuevos</span><b>${m.new}</b></div><div><span>Venta</span><b>${ars(m.sales)}</b></div><div><span>Costo</span><b>${ars(m.cost)}</b></div><div class="profit"><span>Ganancia</span><b>${ars(m.profit)}</b></div></div>${adminSectionNav(activeOrders.length,historyOrders.length,'orders')}${adminTab==='active'?'<div class="admin-actions"><span id="selCount">0 seleccionados</span><button class="btn primary compact" onclick="createBatch()">Crear pedido a Anubis</button></div>':''}<div class="admin-grid ${adminTab==='history'?'history-grid':''}">${shown.length?shown.map(o=>adminOrder(o,adminTab==='history')).join(''):adminEmptyState(adminTab==='history')}</div></main>`;if(focusId){requestAnimationFrame(()=>{const el=document.querySelector(`#admin-order-${focusId}`);if(el){el.classList.add('order-focus');el.scrollIntoView({behavior:'smooth',block:'center'})}})}}catch(e){adminToken='';sessionStorage.removeItem('vv-admin');adminLogin()}}
 let adminUsersTab='clients';
 function setAdminUsersTab(tab){adminUsersTab=tab==='admins'?'admins':'clients';adminUsersView()}
 function managedClientRow(c){return `<article class="user-manage-row"><div class="user-manage-identity"><span class="user-role-icon">ᚱ</span><div><b>${esc(c.username)}</b><small>Cliente · desde ${new Date(c.created_at).toLocaleDateString('es-AR')}${c.email?' · ✉ '+esc(c.email):' · sin correo'}</small></div></div><div class="user-manage-fields client-fields"><label>Usuario<input id="mcu-${c.id}" value="${esc(c.username)}"></label><label>Teléfono<input id="mcp-${c.id}" type="tel" inputmode="tel" value="${esc(c.phone)}"></label><label>Email <small>(opcional)</small><input id="mce-${c.id}" type="email" inputmode="email" value="${esc(c.email||'')}" placeholder="cliente@gmail.com"></label></div><div class="user-manage-actions"><button class="btn ghost compact" onclick="saveManagedClient(${c.id})">Guardar</button><button class="client-state ${c.active?'active':'inactive'}" onclick="toggleManagedClient(${c.id},${!c.active})">${c.active?'Activo':'Bloqueado'}</button></div></article>`}
@@ -322,15 +327,179 @@ function adminLogin(){viewMode('private');document.title='Acceso de gestión';do
 async function doLogin(){try{let r=await req('/admin/login',{method:'POST',body:JSON.stringify({username:document.querySelector('#adminUser').value.trim(),password:document.querySelector('#adminPass').value})});adminToken=r.token;sessionStorage.setItem('vv-admin',adminToken);route()}catch(e){toast(e.message)}}
 function adminLiquidCard(l){return `<article class="admin-catalog-card admin-liquid-card"><img class="admin-catalog-bg" src="assets/liquids/${esc(l.slug)}.webp" data-slug="${esc(l.slug)}" data-name="${esc(l.name)}" data-try="0" onerror="liquidImageFallback(this)" alt=""><div class="admin-catalog-shade"></div><div class="admin-catalog-content"><p class="eyebrow">E-LIQUID</p><h3>${esc(l.name)}</h3><div class="admin-price-table">${l.prices.map(p=>`<div><span>${p.size_ml} ml</span><small>Costo ${ars(p.cost)}</small><small>Venta ${ars(p.sale)}</small><b>+${ars(p.profit)}</b></div>`).join('')}</div><details><summary>${l.flavors.length} sabores</summary><div class="flavor-cloud">${l.flavors.map(f=>`<span>${esc(f)}</span>`).join('')}</div></details><p class="admin-nico">Nicotina: ${l.nicotine_options.map(n=>n+' mg').join(' · ')}</p></div></article>`}
 function adminProductCard(p){const base='assets/products/'+String(p.sku||'').toLowerCase()+'.webp';return `<article class="admin-catalog-card admin-product-card"><div class="admin-product-media"><img src="${esc(base)}" data-try="0" data-sku="${esc(p.sku)}" data-remote="${esc(p.image_url||'')}" data-name="${esc(p.name)}" data-category="${esc(p.category)}" onerror="productImageFallback(this)" alt="${esc(p.name)}"></div><div class="admin-catalog-content"><p class="eyebrow">${esc(p.category)}</p><h3>${esc(p.name)}</h3><code>${esc(p.sku)}</code><div class="admin-costs"><span>Costo <b>${ars(p.cost)}</b></span><span>Venta <b>${ars(p.sale)}</b></span><span>Ganancia <b>${ars(p.profit)}</b></span></div>${p.price_tiers?.length?`<p class="promo-line">${p.price_tiers.map(t=>`${t.qty}× ${ars(t.total)}`).join(' · ')}</p>`:''}</div></article>`}
+
+function savePersonalCart(){sessionStorage.setItem('vv-personal-cart',JSON.stringify(personalCart))}
+function personalProductTotal(p,q){
+  let left=q,total=0,tiers=[...(p.price_tiers||[])].sort((a,b)=>b.qty-a.qty);
+  if(!tiers.length)return Number(p.cost||0)*q;
+  for(const t of tiers){const n=Math.floor(left/Number(t.qty));total+=n*Number(t.total);left-=n*Number(t.qty)}
+  return total+left*Number(p.cost||0);
+}
+function personalCartTotal(){return personalCart.reduce((sum,x)=>sum+Number(x.line_total||0),0)}
+function resetPersonalDraft(){
+  personalCart=[];personalEditingOrderId=0;personalEditingOrderNumber='';
+  sessionStorage.removeItem('vv-personal-cart');
+  sessionStorage.removeItem('vv-personal-edit-id');
+  sessionStorage.removeItem('vv-personal-edit-number');
+}
+function personalQty(id,d){const el=document.querySelector('#'+id);if(el)el.textContent=Math.max(1,Number(el.textContent||1)+d)}
+function personalLiquidCard(l){
+  const min=Math.min(...l.prices.map(p=>Number(p.cost||0)));
+  return `<article class="personal-liquid-card line-${esc(l.slug)}">
+    <img class="personal-card-art" src="assets/liquids/${esc(l.slug)}.webp" data-slug="${esc(l.slug)}" data-name="${esc(l.name)}" data-try="0" onerror="liquidImageFallback(this)" alt="">
+    <div class="personal-card-shade"></div>
+    <div class="personal-card-content">
+      <div class="personal-card-head"><div><p class="eyebrow">E-LIQUID · COSTO</p><h3>${esc(l.name)}</h3></div><strong>desde ${ars(min)}</strong></div>
+      <label>Sabor<select id="ppf-${esc(l.slug)}">${l.flavors.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('')}</select></label>
+      <div class="grid-2">
+        <label>Medida<select id="pps-${esc(l.slug)}">${l.prices.map(p=>`<option value="${p.size_ml}">${p.size_ml} ml · ${ars(p.cost)}</option>`).join('')}</select></label>
+        <label>Nicotina<select id="ppn-${esc(l.slug)}">${l.nicotine_options.map(n=>`<option value="${n}">${n} mg</option>`).join('')}</select></label>
+      </div>
+      <div class="add-row"><div class="qty"><button onclick="personalQty('ppq-${esc(l.slug)}',-1)">−</button><span id="ppq-${esc(l.slug)}">1</span><button onclick="personalQty('ppq-${esc(l.slug)}',1)">+</button></div><button class="btn primary compact" onclick="addPersonalLiquid('${esc(l.slug)}')">+ Sumar</button></div>
+    </div>
+  </article>`;
+}
+function personalProductCard(p){
+  const base='assets/products/'+String(p.sku||'').toLowerCase()+'.webp';
+  return `<article class="personal-product-card"><div class="personal-product-media"><img src="${esc(base)}" data-try="0" data-sku="${esc(p.sku)}" data-remote="${esc(p.image_url||'')}" data-name="${esc(p.name)}" data-category="${esc(p.category)}" onerror="productImageFallback(this)" alt="${esc(p.name)}"></div><div class="personal-product-body"><p class="eyebrow">${esc(p.category)} · COSTO</p><h3>${esc(p.name)}</h3><strong>${ars(p.cost)}</strong>${p.price_tiers?.length?`<small class="promo-line">${p.price_tiers.map(t=>`${t.qty}× ${ars(t.total)}`).join(' · ')}</small>`:''}<div class="add-row"><div class="qty"><button onclick="personalQty('ppp-${p.id}',-1)">−</button><span id="ppp-${p.id}">1</span><button onclick="personalQty('ppp-${p.id}',1)">+</button></div><button class="btn primary compact" onclick="addPersonalProduct(${p.id})">+ Sumar</button></div></div></article>`;
+}
+function addPersonalLiquid(slug){
+  const l=personalCatalog?.liquid_lines?.find(x=>x.slug===slug);if(!l)return;
+  const flavor=document.querySelector('#ppf-'+CSS.escape(slug))?.value||'';
+  const size=Number(document.querySelector('#pps-'+CSS.escape(slug))?.value||0);
+  const mg=Number(document.querySelector('#ppn-'+CSS.escape(slug))?.value||0);
+  const q=Number(document.querySelector('#ppq-'+CSS.escape(slug))?.textContent||1);
+  const price=l.prices.find(p=>Number(p.size_ml)===size);if(!price)return;
+  const key=`l-${slug}-${flavor}-${size}-${mg}`,old=personalCart.find(x=>x.key===key);
+  if(old){old.quantity+=q;old.line_total=Number(price.cost)*old.quantity}
+  else personalCart.push({key,kind:'liquid',reference_id:l.id,line_slug:slug,flavor,size_ml:size,nicotine_mg:mg,quantity:q,name:`${l.name} · ${flavor} · ${size}ml · ${mg}mg`,line_total:Number(price.cost)*q});
+  savePersonalCart();renderPersonalCart();toast('Sumado al pedido personal');
+}
+function addPersonalProduct(id){
+  const p=personalCatalog?.products?.find(x=>x.id===id);if(!p)return;
+  const q=Number(document.querySelector('#ppp-'+id)?.textContent||1),key='p-'+id,old=personalCart.find(x=>x.key===key);
+  if(old){old.quantity+=q;old.line_total=personalProductTotal(p,old.quantity)}
+  else personalCart.push({key,kind:'product',reference_id:id,quantity:q,name:p.name,line_total:personalProductTotal(p,q)});
+  savePersonalCart();renderPersonalCart();toast('Sumado al pedido personal');
+}
+function changePersonalCartQty(i,d){
+  const x=personalCart[i];if(!x)return;x.quantity=Math.max(1,x.quantity+d);
+  if(x.kind==='liquid'){
+    const l=personalCatalog.liquid_lines.find(v=>v.slug===x.line_slug),p=l?.prices.find(v=>Number(v.size_ml)===Number(x.size_ml));
+    if(p)x.line_total=Number(p.cost)*x.quantity;
+  }else{
+    const p=personalCatalog.products.find(v=>v.id===x.reference_id);if(p)x.line_total=personalProductTotal(p,x.quantity);
+  }
+  savePersonalCart();renderPersonalCart();
+}
+function removePersonalCartItem(i){personalCart.splice(i,1);savePersonalCart();renderPersonalCart()}
+function renderPersonalCart(){
+  const box=document.querySelector('#personalCartPanel');if(!box)return;
+  const total=personalCartTotal(),count=personalCart.reduce((a,x)=>a+x.quantity,0);
+  box.innerHTML=`<div class="personal-cart-head"><div><p class="eyebrow">${personalEditingOrderId?'EDITANDO PEDIDO PERSONAL':'TU PEDIDO PERSONAL'}</p><h2>${personalEditingOrderNumber?esc(personalEditingOrderNumber):'Al costo'}</h2></div><span>${count} ${count===1?'ítem':'ítems'}</span></div>
+  <div class="personal-cart-list">${personalCart.length?personalCart.map((x,i)=>`<div class="personal-cart-row"><div><b>${esc(x.name)}</b><small>${ars(x.line_total)}</small></div><div class="personal-cart-row-actions"><button onclick="changePersonalCartQty(${i},-1)">−</button><span>${x.quantity}</span><button onclick="changePersonalCartQty(${i},1)">+</button><button class="remove" onclick="removePersonalCartItem(${i})">×</button></div></div>`).join(''):'<div class="personal-cart-empty">Todavía no agregaste productos.</div>'}</div>
+  <div class="personal-cart-total"><span>Total a costo</span><strong>${ars(total)}</strong></div>
+  <p class="personal-cart-note">Este pedido no cuenta como venta ni genera ganancia. Sí se puede incluir en el consolidado de Anubis.</p>
+  <button class="btn primary full" ${personalCart.length?'':'disabled'} onclick="submitPersonalOrder(this)">${personalEditingOrderId?'Guardar pedido personal':'Crear pedido personal'}</button>
+  ${personalEditingOrderId?'<button class="btn ghost full personal-cancel-edit" onclick="cancelPersonalEdit()">Cancelar edición</button>':''}`;
+}
+function personalCatalogTab(name,button){
+  document.querySelectorAll('.personal-tabs button').forEach(x=>x.classList.remove('active'));button?.classList.add('active');
+  const target=document.querySelector('#personalCatalogContent');if(!target)return;
+  if(name==='liquids')target.innerHTML=`<div class="personal-grid">${personalCatalog.liquid_lines.map(personalLiquidCard).join('')}</div>`;
+  else{
+    const products=personalCatalog.products,cats=[...new Set(products.map(p=>p.category))];
+    target.innerHTML=cats.map(cat=>`<section class="personal-category"><h3>${esc(cat)}</h3><div class="personal-product-grid">${products.filter(p=>p.category===cat).map(personalProductCard).join('')}</div></section>`).join('');
+  }
+}
+async function adminPersonalOrder(){
+  if(!adminToken)return adminLogin();
+  viewMode('admin');document.title='Pedido personal · Valhalla';
+  document.querySelector('#app').innerHTML=header(true)+'<div class="catalog-loading">Cargando precios de costo…</div>';
+  try{
+    const [me,c]=await Promise.all([
+      req('/admin/me',{headers:{Authorization:'Bearer '+adminToken}}),
+      req('/admin/catalog',{headers:{Authorization:'Bearer '+adminToken}})
+    ]);
+    if(!me.personal_order_enabled){toast('Tu usuario no está habilitado para pedidos personales');location.hash='admin';return}
+    personalCatalog=c;
+    document.querySelector('#app').innerHTML=header(true)+`<main class="admin-panel personal-order-page">
+      <div class="admin-title personal-order-title"><div><p class="eyebrow">SALÓN DEL JARL · USO INTERNO</p><h1>${personalEditingOrderId?'Editar pedido personal':'Pedido personal'}</h1><p class="muted">Comprá para vos a precio de costo, sin generar una venta ficticia.</p></div><a class="btn ghost compact" href="#admin">Volver a pedidos</a></div>
+      <div class="personal-cost-notice"><span>⚔</span><div><b>MODO PRECIO COSTO</b><p>Los importes se validan nuevamente en el servidor al guardar. Este pedido aparecerá como <strong>VP</strong> y queda fuera de venta, facturación y ganancia.</p></div></div>
+      <div class="personal-shop-layout">
+        <section class="personal-catalog-area"><nav class="personal-tabs"><button class="active" onclick="personalCatalogTab('liquids',this)">💧 E-liquids</button><button onclick="personalCatalogTab('products',this)">▦ Insumos</button></nav><div id="personalCatalogContent"></div></section>
+        <aside id="personalCartPanel" class="personal-cart-panel"></aside>
+      </div>
+    </main>`;
+    personalCatalogTab('liquids',document.querySelector('.personal-tabs button'));renderPersonalCart();
+  }catch(e){toast(e.message);location.hash='admin'}
+}
+function personalOrderPayload(){return {items:personalCart.map(x=>({kind:x.kind,reference_id:x.reference_id,line_slug:x.line_slug,flavor:x.flavor,size_ml:x.size_ml,nicotine_mg:x.nicotine_mg,quantity:x.quantity}))}}
+async function submitPersonalOrder(button){
+  if(!personalCart.length)return;
+  const editing=personalEditingOrderId,old=button.textContent;button.disabled=true;button.textContent=editing?'Guardando…':'Creando…';
+  try{
+    const path=editing?'/admin/personal/orders/'+editing:'/admin/personal/orders';
+    const o=await req(path,{method:editing?'PUT':'POST',headers:{Authorization:'Bearer '+adminToken},body:JSON.stringify(personalOrderPayload())});
+    resetPersonalDraft();toast(editing?'Pedido personal actualizado':'Pedido personal creado');location.hash='admin-order='+o.id;
+  }catch(e){button.disabled=false;button.textContent=old;toast(e.message)}
+}
+async function editPersonalOrder(id){
+  try{
+    const [orders,c]=await Promise.all([
+      req('/admin/orders',{headers:{Authorization:'Bearer '+adminToken}}),
+      req('/admin/catalog',{headers:{Authorization:'Bearer '+adminToken}})
+    ]);
+    const o=orders.find(x=>x.id===id&&x.internal);if(!o)return toast('Pedido personal no encontrado');
+    if(!o.editable)return toast('Ese pedido ya no se puede editar');
+    personalCatalog=c;personalCart=o.items.map(i=>{
+      if(i.kind==='liquid'){
+        const line=c.liquid_lines.find(l=>l.id===i.reference_id);
+        return {key:`l-${line?.slug||i.line_name}-${i.flavor}-${i.size_ml}-${i.nicotine_mg}`,kind:'liquid',reference_id:i.reference_id,line_slug:line?.slug||'',flavor:i.flavor,size_ml:i.size_ml,nicotine_mg:i.nicotine_mg,quantity:i.quantity,name:i.name,line_total:i.line_total_cost};
+      }
+      return {key:'p-'+i.reference_id,kind:'product',reference_id:i.reference_id,quantity:i.quantity,name:i.name,line_total:i.line_total_cost};
+    });
+    personalEditingOrderId=id;personalEditingOrderNumber=o.number;
+    sessionStorage.setItem('vv-personal-edit-id',String(id));sessionStorage.setItem('vv-personal-edit-number',o.number);savePersonalCart();
+    location.hash='admin-personal';
+  }catch(e){toast(e.message)}
+}
+function cancelPersonalEdit(){
+  if(!confirm('¿Cancelar la edición del pedido personal?'))return;
+  resetPersonalDraft();location.hash='admin';
+}
+
 async function adminCatalog(){if(!adminToken)return adminLogin();viewMode('admin');document.title='Catálogo · Salón del Jarl';document.querySelector('#app').innerHTML=header(true)+`<div class="catalog-loading">Cargando catálogo…</div>`;try{const c=await req('/admin/catalog',{headers:{Authorization:'Bearer '+adminToken}});const cats=[...new Set(c.products.map(p=>p.category))];document.querySelector('#app').innerHTML=header(true)+`<main class="admin-panel admin-catalog-panel"><div class="admin-title"><div><p class="eyebrow">SALÓN DEL JARL</p><h1>Catálogo completo</h1><p class="muted">Costos, ventas, márgenes y referencias del catálogo activo.</p></div><a class="btn ghost compact" href="#admin">Volver a pedidos</a></div><label class="admin-catalog-search">Buscar<input id="adminCatalogSearch" type="search" placeholder="Producto, SKU, categoría o línea…" oninput="filterAdminCatalog(this.value)"></label><section><div class="section-title"><p class="eyebrow">E-LIQUIDS</p><h2>Líneas</h2></div><div class="admin-catalog-grid">${c.liquid_lines.map(adminLiquidCard).join('')}</div></section>${cats.map(cat=>`<section class="admin-category"><div class="section-title"><p class="eyebrow">INSUMOS</p><h2>${esc(cat)}</h2></div><div class="admin-catalog-grid">${c.products.filter(p=>p.category===cat).map(adminProductCard).join('')}</div></section>`).join('')}</main>`}catch(e){toast(e.message)}}
 function filterAdminCatalog(q){const t=String(q||'').toLowerCase().trim();document.querySelectorAll('.admin-catalog-card').forEach(el=>{el.classList.toggle('catalog-hidden',t&&!el.textContent.toLowerCase().includes(t))});document.querySelectorAll('.admin-category').forEach(sec=>{const visible=[...sec.querySelectorAll('.admin-catalog-card')].some(x=>!x.classList.contains('catalog-hidden'));sec.classList.toggle('catalog-hidden',!visible&&!!t)})}
 function clientPanel(clients){return `<section class="client-admin"><div class="client-admin-head"><div><p class="eyebrow">ACCESOS</p><h2>Clientes autorizados</h2></div><span>${clients.filter(c=>c.active).length} activos</span></div><div class="client-create"><label>Usuario<input id="newClientUser" placeholder="Ej: juan"></label><label>Teléfono<input id="newClientPhone" type="tel" inputmode="tel" placeholder="Ej: 11 1234 5678"></label><button class="btn primary" onclick="createClient()">Autorizar cliente</button></div><div class="client-list">${clients.length?clients.map(c=>`<div class="client-row"><div><b>${esc(c.username)}</b><small>${esc(c.phone)}</small></div><button class="client-state ${c.active?'active':'inactive'}" onclick="toggleClient(${c.id},${!c.active})">${c.active?'Activo':'Bloqueado'}</button></div>`).join(''):'<p class="muted">Todavía no hay clientes autorizados.</p>'}</div></section>`}
 async function createClient(){const username=document.querySelector('#newClientUser')?.value.trim()||'',phone=document.querySelector('#newClientPhone')?.value.trim()||'';if(username.length<2||phone.length<6)return toast('Completá usuario y teléfono');try{await req('/admin/clients',{method:'POST',headers:{Authorization:'Bearer '+adminToken},body:JSON.stringify({username,phone})});toast('Cliente autorizado');admin()}catch(e){toast(e.message)}}
 async function toggleClient(id,active){try{await req('/admin/clients/'+id,{method:'PATCH',headers:{Authorization:'Bearer '+adminToken},body:JSON.stringify({active})});admin()}catch(e){toast(e.message)}}
-function adminOrder(o,history=false){return `<article id="admin-order-${o.id}" class="admin-order ${history?'history-order':''} ${o.payment_reported?'payment-alert':''}"><div class="order-top">${history?`<span class="history-status s-${o.status}">${esc(o.status_label)}</span>`:`<input class="batchCheck" type="checkbox" value="${o.id}" onchange="selCount()">`}<div><b>${esc(o.number)} · ${esc(o.customer_name)}</b><small>${new Date(o.created_at).toLocaleString('es-AR')}</small></div><strong>${ars(o.total)}</strong></div><div class="admin-items">${o.items.map(i=>`<span>${i.quantity}× ${esc(i.name)}</span>`).join('')}</div><div class="finance-row"><span>Costo <b>${ars(o.cost)}</b></span><span>Venta <b>${ars(o.subtotal)}</b></span><span>Ganancia <b>${ars(o.profit)}</b></span>${o.payment_reported?'<em>TRANSFERENCIA INFORMADA</em>':''}</div><div class="admin-controls"><label>Envío<input inputmode="numeric" value="${o.shipping}" onchange="patchOrder(${o.id},{shipping:+this.value||0})"></label><label>Estado<select onchange="patchOrder(${o.id},{status:this.value})">${STATUS.map(([v,l])=>`<option value="${v}" ${v===o.status?'selected':''}>${l}</option>`).join('')}</select></label></div><details><summary>Historial (${o.events.length})</summary>${[...o.events].reverse().map(e=>`<p>${esc(e.detail)}<small>${new Date(e.created_at).toLocaleString('es-AR')}</small></p>`).join('')}</details></article>`}
+function adminOrder(o,history=false){
+  const internal=!!o.internal;
+  const editablePersonal=internal&&!history&&o.editable;
+  return `<article id="admin-order-${o.id}" class="admin-order ${history?'history-order':''} ${o.payment_reported?'payment-alert':''} ${internal?'internal-order':''}">
+    <div class="order-top">
+      ${history?`<span class="history-status s-${o.status}">${esc(o.status_label)}</span>`:`<input class="batchCheck" type="checkbox" value="${o.id}" onchange="selCount()">`}
+      <div>
+        <div class="order-identity-line"><b>${esc(o.number)} · ${esc(o.customer_name)}</b>${internal?'<span class="internal-order-badge">PERSONAL · COSTO</span>':''}</div>
+        <small>${new Date(o.created_at).toLocaleString('es-AR')}</small>
+      </div>
+      <strong>${ars(o.total)}</strong>
+    </div>
+    <div class="admin-items">${o.items.map(i=>`<span>${i.quantity}× ${esc(i.name)}</span>`).join('')}</div>
+    <div class="finance-row">
+      <span>Costo <b>${ars(o.cost)}</b></span>
+      ${internal?`<span>Total personal <b>${ars(o.subtotal)}</b></span><span>Ganancia <b>${ars(0)}</b></span>`:`<span>Venta <b>${ars(o.subtotal)}</b></span><span>Ganancia <b>${ars(o.profit)}</b></span>`}
+      ${o.payment_reported?'<em>TRANSFERENCIA INFORMADA</em>':''}
+    </div>
+    ${editablePersonal?`<div class="personal-order-card-action"><button class="btn ghost compact" onclick="editPersonalOrder(${o.id})">✎ Editar productos personales</button></div>`:''}
+    <div class="admin-controls"><label>Envío<input inputmode="numeric" value="${o.shipping}" onchange="patchOrder(${o.id},{shipping:+this.value||0})"></label><label>Estado<select onchange="patchOrder(${o.id},{status:this.value})">${STATUS.map(([v,l])=>`<option value="${v}" ${v===o.status?'selected':''}>${l}</option>`).join('')}</select></label></div>
+    <details><summary>Historial (${o.events.length})</summary>${[...o.events].reverse().map(e=>`<p>${esc(e.detail)}<small>${new Date(e.created_at).toLocaleString('es-AR')}</small></p>`).join('')}</details>
+  </article>`;
+}
 function selCount(){document.querySelector('#selCount').textContent=document.querySelectorAll('.batchCheck:checked').length+' seleccionados'}
 async function patchOrder(id,data){try{await req('/admin/orders/'+id,{method:'PATCH',headers:{Authorization:'Bearer '+adminToken},body:JSON.stringify(data)});admin()}catch(e){toast(e.message)}}
 async function createBatch(){let ids=[...document.querySelectorAll('.batchCheck:checked')].map(x=>+x.value);if(!ids.length)return toast('Seleccioná al menos un pedido');try{let b=await req('/admin/supplier-batches',{method:'POST',headers:{Authorization:'Bearer '+adminToken},body:JSON.stringify({order_ids:ids,extra_items:[]})});document.body.insertAdjacentHTML('beforeend',`<div class="modal-scrim" id="batch"><div class="batch-modal rune-frame"><button class="modal-close" onclick="document.querySelector('#batch').remove()">✕</button><p class="eyebrow">${esc(b.number)}</p><h2>Pedido consolidado</h2><pre class="batch-output">${esc(b.text)}</pre><button class="btn primary full" onclick="navigator.clipboard.writeText(\`${b.text.replace(/`/g,'\`')}\`);toast('Copiado')">Copiar listado</button></div></div>`);admin()}catch(e){toast(e.message)}}
-function route(){let h=location.hash.slice(1);if(h==='admin')return admin();if(h.startsWith('admin-order='))return admin(+h.split('=')[1]);if(h==='admin-users')return adminUsersView();if(h==='admin-catalog')return adminCatalog();if(!clientToken)return privateWelcome();if(h==='checkout')checkout();else if(h.startsWith('pedido='))orderStatus(h.split('=')[1]);else shop()}
+function route(){let h=location.hash.slice(1);if(h==='admin')return admin();if(h.startsWith('admin-order='))return admin(+h.split('=')[1]);if(h==='admin-users')return adminUsersView();if(h==='admin-catalog')return adminCatalog();if(h==='admin-personal')return adminPersonalOrder();if(!clientToken)return privateWelcome();if(h==='checkout')checkout();else if(h.startsWith('pedido='))orderStatus(h.split('=')[1]);else shop()}
 addEventListener('hashchange',route);
 route();
