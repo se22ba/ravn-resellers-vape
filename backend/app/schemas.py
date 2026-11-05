@@ -7,6 +7,7 @@ class OrderItemIn(BaseModel):
     flavor: str | None = None
     size_ml: int | None = None
     nicotine_mg: int | None = None
+    variant_note: str | None = Field(default=None, max_length=160)
     quantity: int = Field(ge=1, le=99)
 
 class OrderCreate(BaseModel):
