@@ -70,6 +70,7 @@ class OrderItem(Base):
     flavor: Mapped[str | None] = mapped_column(String(120), nullable=True)
     size_ml: Mapped[int | None] = mapped_column(Integer, nullable=True)
     nicotine_mg: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    variant_note: Mapped[str | None] = mapped_column(String(160), nullable=True)
     quantity: Mapped[int] = mapped_column(Integer, default=1)
     unit_cost: Mapped[float] = mapped_column(Numeric(12, 2))
     unit_sale: Mapped[float] = mapped_column(Numeric(12, 2))
