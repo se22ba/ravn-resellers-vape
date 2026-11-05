@@ -143,13 +143,36 @@ function resolveFlavor(line,raw){const q=flavorNorm(raw);if(!q)return null;const
 document.addEventListener('click',e=>{if(!e.target.closest('.flavor-picker'))document.querySelectorAll('.flavor-results.open').forEach(x=>{if(x.id!=='globalFlavorResults')x.classList.remove('open')});if(!e.target.closest('.global-flavor-search'))document.querySelector('#globalFlavorResults')?.classList.remove('open')});
 function resetLiquidCard(slug){const input=document.querySelector(`#f-${slug}`),desc=document.querySelector(`#fd-${slug}`),results=document.querySelector(`#fr-${slug}`),size=document.querySelector(`#s-${slug}`),nico=document.querySelector(`#n-${slug}`),qtyEl=document.querySelector(`#q-${slug}`),global=document.querySelector('#globalFlavorSearch'),globalResults=document.querySelector('#globalFlavorResults');if(input){input.value='';input.dataset.selected=''}if(desc)desc.textContent='Escribí para buscar o elegí de la lista';if(results){results.innerHTML='';results.classList.remove('open')}if(size)size.selectedIndex=0;if(nico)nico.selectedIndex=0;if(qtyEl)qtyEl.textContent='1';if(global)global.value='';if(globalResults){globalResults.innerHTML='';globalResults.classList.remove('open')}}
 function addLiquid(slug){const l=catalog.liquid_lines.find(x=>x.slug===slug),input=document.querySelector(`#f-${slug}`),f=resolveFlavor(l,input?.value||'');if(!f){toast('Elegí un sabor válido de la lista');input?.focus();openFlavorPicker(slug);return}selectFlavor(slug,f);const size=+document.querySelector(`#s-${slug}`).value,mg=+document.querySelector(`#n-${slug}`).value,q=+document.querySelector(`#q-${slug}`).textContent,p=l.prices.find(x=>x.size_ml===size).sale,key=`l-${slug}-${f}-${size}-${mg}`;const old=cart.find(x=>x.key===key);if(old){old.quantity+=q;old.line_total+=p*q}else cart.push({key,kind:'liquid',line_slug:slug,flavor:f,size_ml:size,nicotine_mg:mg,quantity:q,name:`${l.name} · ${f} · ${size}ml · ${mg}mg`,line_total:p*q});saveCart();resetLiquidCard(slug);toast(editingOrderToken?'Agregado a '+editingOrderNumber:'Agregado al pedido');updateCartCount()}
-function addProduct(id){const p=catalog.products.find(x=>x.id===id),qtyEl=document.querySelector(`#pq-${id}`),q=+qtyEl.textContent,total=tierTotal(p,q),key=`p-${id}`,old=cart.find(x=>x.key===key);if(old){old.quantity+=q;old.line_total=tierTotal(p,old.quantity)}else cart.push({key,kind:'product',reference_id:id,quantity:q,name:p.name,line_total:total});saveCart();if(qtyEl)qtyEl.textContent='1';toast(editingOrderToken?'Agregado a '+editingOrderNumber:'Agregado al pedido');updateCartCount()}
+function addProduct(id){const p=catalog.products.find(x=>x.id===id),qtyEl=document.querySelector(`#pq-${id}`),q=+qtyEl.textContent,total=tierTotal(p,q),variant=(document.querySelector(`#pv-${id}`)?.value||'').trim(),key=`p-${id}-${variant.toLowerCase()}`,old=cart.find(x=>x.key===key);if(old){old.quantity+=q;old.line_total=tierTotal(p,old.quantity)}else cart.push({key,kind:'product',reference_id:id,quantity:q,variant_note:variant||null,name:p.name+(variant?' · Preferencia: '+variant:''),line_total:total});saveCart();if(qtyEl)qtyEl.textContent='1';const v=document.querySelector(`#pv-${id}`);if(v)v.value='';toast(editingOrderToken?'Agregado a '+editingOrderNumber:'Agregado al pedido');updateCartCount()}
 function qty(id,d){const e=document.querySelector('#'+id);e.textContent=Math.max(1,+e.textContent+d)}
 function liquidImageFallback(img){const slug=img.dataset.slug||'',base='assets/liquids/'+slug,raw='https://raw.githubusercontent.com/se22ba/ravn-resellers-vape/main/assets/liquids/'+slug,remote=LIQUID_LINE_IMAGES[slug]||'',fallback=productPlaceholder(img.dataset.name||'Anubis','E-Liquid');const tries=[base+'.png',base+'.jpg',base+'.jpeg',raw+'.webp',raw+'.png',raw+'.jpg',raw+'.jpeg',remote,fallback].filter(Boolean);let i=Number(img.dataset.try||0)+1;if(i<tries.length){img.dataset.try=String(i);img.src=tries[i]}else img.onerror=null}
 function liquidCard(l){let min=Math.min(...l.prices.map(p=>p.sale)),local=`assets/liquids/${l.slug}.webp`;return `<article class="liquid-card line-${l.slug}"><img class="liquid-line-art" src="${esc(local)}" alt="Envase línea ${esc(l.name)}" data-slug="${esc(l.slug)}" data-name="${esc(l.name)}" data-try="0" onerror="liquidImageFallback(this)"><div class="liquid-shade"></div><div class="liquid-emblem"><span>ᚱ</span></div><div class="liquid-card-content"><div class="liquid-head"><p class="eyebrow">LÍNEA</p><h3>${esc(l.name)}</h3><strong>desde ${ars(min)}</strong></div><label>Sabor<div class="flavor-picker"><div class="flavor-input-wrap"><input id="f-${l.slug}" type="search" inputmode="search" autocomplete="off" placeholder="Buscar sabor…" data-selected="" onfocus="openFlavorPicker('${l.slug}')" oninput="filterFlavorPicker('${l.slug}',this.value)"><button type="button" class="flavor-toggle" aria-label="Ver sabores" onclick="event.preventDefault();openFlavorPicker('${l.slug}')">⌄</button></div><div id="fr-${l.slug}" class="flavor-results"></div><small id="fd-${l.slug}" class="flavor-description">Escribí para buscar o elegí de la lista</small></div></label><div class="grid-2"><label>Medida<select id="s-${l.slug}">${l.prices.map(p=>`<option value="${p.size_ml}">${p.size_ml} ml · ${ars(p.sale)}</option>`).join('')}</select></label><label>Nicotina<select id="n-${l.slug}">${l.nicotine_options.map(x=>`<option value="${x}">${x} mg</option>`).join('')}</select></label></div><div class="add-row"><div class="qty"><button onclick="qty('q-${l.slug}',-1)">−</button><span id="q-${l.slug}">1</span><button onclick="qty('q-${l.slug}',1)">+</button></div><button class="btn primary compact catalog-add-btn" onclick="addLiquid('${l.slug}')">${editingOrderToken?'＋ Sumar al pedido':'+ Agregar'}</button></div></div></article>`}
 function productPlaceholder(name,category){const clean=v=>String(v||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));const words=String(name||'Producto').split(/\s+/).slice(0,4),top=clean(words.slice(0,2).join(' ')),bottom=clean(words.slice(2).join(' ')),cat=clean(String(category||'Insumo').toUpperCase());const svg='<svg xmlns="http://www.w3.org/2000/svg" width="480" height="480" viewBox="0 0 480 480"><defs><linearGradient id="g" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#1f2830"/><stop offset="1" stop-color="#090c0f"/></linearGradient><linearGradient id="b" x1="0" x2="1"><stop stop-color="#d0b173"/><stop offset="1" stop-color="#8f7548"/></linearGradient></defs><rect width="480" height="480" rx="28" fill="url(#g)"/><rect x="18" y="18" width="444" height="444" rx="22" fill="none" stroke="#3d4852"/><circle cx="240" cy="150" r="88" fill="#10161b" stroke="#4b5661"/><text x="240" y="173" text-anchor="middle" font-size="96" fill="url(#b)" font-family="Georgia,serif">ᛉ</text><text x="240" y="285" text-anchor="middle" font-size="26" font-weight="700" fill="#d0b173" font-family="Arial,sans-serif" letter-spacing="2">'+cat+'</text><text x="240" y="335" text-anchor="middle" font-size="32" font-weight="700" fill="#eef1f2" font-family="Arial,sans-serif">'+top+'</text>'+(bottom?'<text x="240" y="372" text-anchor="middle" font-size="28" fill="#c7cdd1" font-family="Arial,sans-serif">'+bottom+'</text>':'')+'</svg>';return 'data:image/svg+xml;charset=UTF-8,'+encodeURIComponent(svg)}
 function productImageFallback(img){const key=String(img.dataset.sku||'').toLowerCase(),base='assets/products/'+key,raw='https://raw.githubusercontent.com/se22ba/ravn-resellers-vape/main/assets/products/'+key,remote=img.dataset.remote||'',fallback=productPlaceholder(img.dataset.name||'Producto',img.dataset.category||'Insumo'),candidates=[base+'.webp',base+'.png',base+'.jpg',base+'.jpeg',raw+'.webp',raw+'.png',raw+'.jpg',raw+'.jpeg',remote,fallback].filter(Boolean);let i=Number(img.dataset.try||0)+1;if(i<candidates.length){img.dataset.try=String(i);img.src=candidates[i]}else{img.onerror=null}}
-function productCard(p){const base='assets/products/'+String(p.sku||'').toLowerCase()+'.webp';return `<article class="product-card"><div class="product-media"><img src="${esc(base)}" alt="${esc(p.name)}" loading="lazy" data-try="0" data-sku="${esc(p.sku)}" data-remote="${esc(p.image_url||'')}" data-name="${esc(p.name)}" data-category="${esc(p.category)}" onerror="productImageFallback(this)"><span>${esc(p.category)}</span></div><div class="product-body"><h3>${esc(p.name)}</h3>${p.price_tiers?.length?`<p class="promo-line">${p.price_tiers.map(t=>`${t.qty}× ${ars(t.total)}`).join(' · ')}</p>`:''}<strong>${ars(p.sale)}</strong><div class="add-row"><div class="qty"><button onclick="qty('pq-${p.id}',-1)">−</button><span id="pq-${p.id}">1</span><button onclick="qty('pq-${p.id}',1)">+</button></div><button class="btn primary icon-only catalog-add-btn" onclick="addProduct(${p.id})" title="${editingOrderToken?'Sumar al pedido':'Agregar al pedido'}">${editingOrderToken?'＋ Sumar':'+'}</button></div></div></article>`}
+function productVariantMeta(p){
+  const cat=String(p?.category||'').toLowerCase();
+  if(cat.includes('descartable'))return {
+    kind:'flavor',
+    label:'Preferencia de sabor',
+    placeholder:'Ej: Blue Razz, Sandía Ice…',
+    hint:'Hay distintos sabores según disponibilidad. La imagen puede mostrar solo una variante.'
+  };
+  if(cat.includes('resistencia'))return {
+    kind:'resistance',
+    label:'Preferencia de ohmiaje / variante',
+    placeholder:'Ej: 0.8 Ω, 0.6 Ω…',
+    hint:'El ohmiaje y la variante dependen del stock disponible. La imagen puede mostrar una opción específica.'
+  };
+  return null;
+}
+function illustrativeCatalogNotice(){
+  return `<div class="catalog-availability-notice"><span>ⓘ</span><div><b>Imágenes meramente ilustrativas</b><p>Algunas fotos muestran un sabor, color, ohmiaje o versión específica. Las variantes reales dependen de disponibilidad. Cuando corresponda, podés indicar tu preferencia y la confirmamos antes de procesar el pedido.</p></div></div>`;
+}
+
+function productCard(p){
+  const base='assets/products/'+String(p.sku||'').toLowerCase()+'.webp',variant=productVariantMeta(p);
+  return `<article class="product-card ${variant?'product-has-variants':''}"><div class="product-media"><img src="${esc(base)}" alt="${esc(p.name)}" loading="lazy" data-try="0" data-sku="${esc(p.sku)}" data-remote="${esc(p.image_url||'')}" data-name="${esc(p.name)}" data-category="${esc(p.category)}" onerror="productImageFallback(this)"><span>${esc(p.category)}</span></div><div class="product-body"><h3>${esc(p.name)}</h3>${p.price_tiers?.length?`<p class="promo-line">${p.price_tiers.map(t=>`${t.qty}× ${ars(t.total)}`).join(' · ')}</p>`:''}<strong>${ars(p.sale)}</strong>${variant?`<div class="variant-preference"><label>${esc(variant.label)} <small>(opcional)</small><input id="pv-${p.id}" type="text" maxlength="160" autocomplete="off" placeholder="${esc(variant.placeholder)}"></label><p>${esc(variant.hint)}</p></div>`:''}<div class="add-row"><div class="qty"><button onclick="qty('pq-${p.id}',-1)">−</button><span id="pq-${p.id}">1</span><button onclick="qty('pq-${p.id}',1)">+</button></div><button class="btn primary icon-only catalog-add-btn" onclick="addProduct(${p.id})" title="${editingOrderToken?'Sumar al pedido':'Agregar al pedido'}">${editingOrderToken?'＋ Sumar':'+'}</button></div></div></article>`;
+}
 function editOrderWorkspace(){
   const total=cart.reduce((sum,x)=>sum+x.line_total,0);
   const count=cart.reduce((sum,x)=>sum+x.quantity,0);
@@ -181,7 +204,7 @@ function continueEditingOrder(){
   if(location.hash){location.hash='';setTimeout(reveal,220)}else reveal();
 }
 async function shop(){if(!clientToken)return privateWelcome();viewMode('client');syncOrderEditMode();document.title='Valhalla Vape';document.querySelector('#app').innerHTML=header()+`<div class="catalog-loading">Cargando catálogo…</div>`;try{const [,orders,me]=await Promise.all([loadCatalog(),req('/client/orders'),req('/client/me')]);clientProfile={...(clientProfile||{}),...me};localStorage.setItem('vv-client-profile',JSON.stringify(clientProfile));syncOrderEditMode();document.querySelector('#app').innerHTML=header()+`<main>${editingOrderToken?editOrderWorkspace():`<section class="hero"><div class="hero-overlay"></div><div class="hero-copy"><p class="eyebrow">INSUMOS & E-LIQUIDS</p><h1>Elegí. Armá. <span>Entrá al Valhalla.</span></h1></div></section>${clientOrdersSection(orders)}`}<nav class="pill-tabs"><button class="active" onclick="tab('liquidos',this)">💧 Líquidos</button><button onclick="tab('insumos',this)">▦ Insumos</button><button onclick="tab('promos',this)">✦ Promos</button></nav><section class="section" id="content"></section></main>${footer()}`;tab('liquidos',document.querySelector('.pill-tabs button'))}catch(e){if(!clientToken)return privateWelcome('Tu sesión venció o ya no está autorizada.');const loading=document.querySelector('.catalog-loading');if(loading)loading.textContent='No pudimos conectar con el servidor. '+e.message}}
-function tab(name,b){document.querySelectorAll('.pill-tabs button').forEach(x=>x.classList.remove('active'));b.classList.add('active');let c=document.querySelector('#content');if(name==='liquidos')c.innerHTML=`<div class="section-title"><p class="eyebrow">ANUBIS E-JUICE</p><h2>Elegí tu líquido</h2><p>Seleccioná línea, sabor, medida y nicotina.</p></div><div class="global-flavor-search"><div class="global-flavor-copy"><p class="eyebrow">ATAJO</p><h3>¿Ya sabés qué querés?</h3><p>Buscá por nombre o por lo que tiene. Ej: Tribeca, banana, tabaco, menta…</p></div><div class="global-flavor-field"><span>⌕</span><input id="globalFlavorSearch" type="search" inputmode="search" autocomplete="off" placeholder="Buscar sabor o ingrediente…" oninput="searchAllFlavors(this.value)" onfocus="searchAllFlavors(this.value)"></div><div id="globalFlavorResults" class="global-flavor-results"></div></div><div class="liquid-grid">${catalog.liquid_lines.map(liquidCard).join('')}</div>`;else{let promo=name==='promos',ps=catalog.products.filter(p=>promo?p.category.toLowerCase().includes('promo'):!p.category.toLowerCase().includes('promo')),cats=[...new Set(ps.map(p=>p.category))];c.innerHTML=`<div class="section-title"><p class="eyebrow">CATÁLOGO</p><h2>${promo?'Promociones':'Equipos & insumos'}</h2><p>${promo?'Promociones directas de Anubis.':'Precios finales, sin recargo.'}</p></div>${cats.map(cat=>`<div class="category-block"><h3>${esc(cat)}</h3><div class="products-grid">${ps.filter(p=>p.category===cat).map(productCard).join('')}</div></div>`).join('')}`}}
+function tab(name,b){document.querySelectorAll('.pill-tabs button').forEach(x=>x.classList.remove('active'));b.classList.add('active');let c=document.querySelector('#content');if(name==='liquidos')c.innerHTML=`<div class="section-title"><p class="eyebrow">ANUBIS E-JUICE</p><h2>Elegí tu líquido</h2><p>Seleccioná línea, sabor, medida y nicotina.</p></div><div class="global-flavor-search"><div class="global-flavor-copy"><p class="eyebrow">ATAJO</p><h3>¿Ya sabés qué querés?</h3><p>Buscá por nombre o por lo que tiene. Ej: Tribeca, banana, tabaco, menta…</p></div><div class="global-flavor-field"><span>⌕</span><input id="globalFlavorSearch" type="search" inputmode="search" autocomplete="off" placeholder="Buscar sabor o ingrediente…" oninput="searchAllFlavors(this.value)" onfocus="searchAllFlavors(this.value)"></div><div id="globalFlavorResults" class="global-flavor-results"></div></div><div class="liquid-grid">${catalog.liquid_lines.map(liquidCard).join('')}</div>`;else{let promo=name==='promos',ps=catalog.products.filter(p=>promo?p.category.toLowerCase().includes('promo'):!p.category.toLowerCase().includes('promo')),cats=[...new Set(ps.map(p=>p.category))];c.innerHTML=`<div class="section-title"><p class="eyebrow">CATÁLOGO</p><h2>${promo?'Promociones':'Equipos & insumos'}</h2><p>${promo?'Promociones directas de Anubis.':'Precios finales, sin recargo.'}</p></div>${illustrativeCatalogNotice()}${cats.map(cat=>`<div class="category-block"><h3>${esc(cat)}</h3><div class="products-grid">${ps.filter(p=>p.category===cat).map(productCard).join('')}</div></div>`).join('')}`}}
 function cartItemEditor(x,i){
   if(x.kind==='liquid'){
     const line=catalog?.liquid_lines?.find(l=>l.slug===x.line_slug);
@@ -196,7 +219,9 @@ function cartItemEditor(x,i){
       <div class="cart-edit-actions"><button class="btn ghost compact" onclick="closeCartEdit(${i})">Cancelar</button><button class="btn primary compact" onclick="saveCartEdit(${i})">Guardar cambios</button></div>
     </div>`;
   }
+  const p=catalog?.products?.find(p=>p.id===x.reference_id),variant=productVariantMeta(p);
   return `<div class="cart-edit-form" id="cei-${i}">
+    ${variant?`<label>${esc(variant.label)} <small>(opcional)</small><input id="cev-${i}" type="text" maxlength="160" value="${esc(x.variant_note||'')}" placeholder="${esc(variant.placeholder)}"></label><p class="cart-variant-hint">${esc(variant.hint)}</p>`:''}
     <label>Cantidad<input id="ceq-${i}" type="number" min="1" max="99" value="${x.quantity}"></label>
     <div class="cart-edit-actions"><button class="btn ghost compact" onclick="closeCartEdit(${i})">Cancelar</button><button class="btn primary compact" onclick="saveCartEdit(${i})">Guardar cambios</button></div>
   </div>`;
@@ -213,7 +238,8 @@ function saveCartEdit(i){
     Object.assign(x,{flavor,size_ml:size,nicotine_mg:mg,quantity:q,name:`${line.name} · ${flavor} · ${size}ml · ${mg}mg`,line_total:price.sale*q,key:`l-${line.slug}-${flavor}-${size}-${mg}`});
   }else{
     const p=catalog?.products?.find(p=>p.id===x.reference_id); if(!p)return;
-    x.quantity=q;x.line_total=tierTotal(p,q);x.name=p.name;
+    const variant=(document.querySelector(`#cev-${i}`)?.value||x.variant_note||'').trim();
+    x.quantity=q;x.variant_note=variant||null;x.line_total=tierTotal(p,q);x.name=p.name+(variant?' · Preferencia: '+variant:'');x.key=`p-${p.id}-${variant.toLowerCase()}`;
   }
   saveCart();updateCartCount();document.querySelector('#cartModal')?.remove();showCart();toast(editingOrderToken?'Cambio aplicado al pedido en edición':'Producto actualizado');
 }
@@ -251,7 +277,7 @@ function showCart(){
   document.body.insertAdjacentHTML('beforeend',html);
 }
 function checkout(){if(!clientToken)return privateWelcome();if(editingOrderToken){showCart();return}let total=cart.reduce((s,x)=>s+x.line_total,0);document.querySelector('#app').innerHTML=header()+`<main class="narrow"><section class="checkout-card rune-frame"><p class="eyebrow">${editingOrderToken?'EDITAR PEDIDO':'CONFIRMAR PEDIDO'}</p><h1>${editingOrderToken?esc(editingOrderNumber):'Pedido de '+esc(clientProfile?.username||'cliente')}</h1><p class="muted">${editingOrderToken?'Revisá los cambios antes de guardarlos. Podés modificar el pedido hasta que sea enviado al proveedor.':'No transfieras todavía. Primero revisamos disponibilidad y cargamos el envío.'}</p><div class="order-review">${cart.map(x=>`<div><span>${x.quantity}× ${esc(x.name)}</span><b>${ars(x.line_total)}</b></div>`).join('')}</div><div class="total-line"><span>Subtotal</span><strong>${ars(total)}</strong></div>${clientProfile?.email?'':`<div class="checkout-email-reminder"><span>✉</span><div><b>¿Querés recibir cambios de estado?</b><small>Podés agregar tu email. No es obligatorio.</small></div><button class="link-btn" onclick="goToEmailSettings()">Activar avisos</button></div>`}<button class="btn primary full" onclick="sendOrder(this)">Enviar pedido</button></section></main>`}
-function orderPayload(){return {items:cart.map(x=>({kind:x.kind,reference_id:x.reference_id,line_slug:x.line_slug,flavor:x.flavor,size_ml:x.size_ml,nicotine_mg:x.nicotine_mg,quantity:x.quantity}))}}
+function orderPayload(){return {items:cart.map(x=>({kind:x.kind,reference_id:x.reference_id,line_slug:x.line_slug,flavor:x.flavor,size_ml:x.size_ml,nicotine_mg:x.nicotine_mg,variant_note:x.variant_note||null,quantity:x.quantity}))}}
 async function sendOrder(button=null){
   if(!clientToken)return privateWelcome();
   if(!cart.length)return toast('Agregá al menos un producto');
@@ -286,7 +312,7 @@ async function startOrderEdit(token){
         rebuilt.push({key:`l-${line.slug}-${i.flavor}-${i.size_ml}-${i.nicotine_mg}`,kind:'liquid',reference_id:line.id,line_slug:line.slug,flavor:i.flavor,size_ml:i.size_ml,nicotine_mg:i.nicotine_mg,quantity:i.quantity,name:i.name,line_total:i.line_total_sale});
       }else{
         const p=catalog.products.find(p=>p.id===i.reference_id);if(!p)continue;
-        rebuilt.push({key:`p-${p.id}`,kind:'product',reference_id:p.id,quantity:i.quantity,name:p.name,line_total:i.line_total_sale});
+        rebuilt.push({key:`p-${p.id}-${String(i.variant_note||'').toLowerCase()}`,kind:'product',reference_id:p.id,quantity:i.quantity,variant_note:i.variant_note||null,name:i.name,line_total:i.line_total_sale});
       }
     }
     if(!rebuilt.length){toast('No se pudieron cargar los productos del pedido');return}
@@ -360,8 +386,8 @@ function personalLiquidCard(l){
   </article>`;
 }
 function personalProductCard(p){
-  const base='assets/products/'+String(p.sku||'').toLowerCase()+'.webp';
-  return `<article class="personal-product-card"><div class="personal-product-media"><img src="${esc(base)}" data-try="0" data-sku="${esc(p.sku)}" data-remote="${esc(p.image_url||'')}" data-name="${esc(p.name)}" data-category="${esc(p.category)}" onerror="productImageFallback(this)" alt="${esc(p.name)}"></div><div class="personal-product-body"><p class="eyebrow">${esc(p.category)} · COSTO</p><h3>${esc(p.name)}</h3><strong>${ars(p.cost)}</strong>${p.price_tiers?.length?`<small class="promo-line">${p.price_tiers.map(t=>`${t.qty}× ${ars(t.total)}`).join(' · ')}</small>`:''}<div class="add-row"><div class="qty"><button onclick="personalQty('ppp-${p.id}',-1)">−</button><span id="ppp-${p.id}">1</span><button onclick="personalQty('ppp-${p.id}',1)">+</button></div><button class="btn primary compact" onclick="addPersonalProduct(${p.id})">+ Sumar</button></div></div></article>`;
+  const base='assets/products/'+String(p.sku||'').toLowerCase()+'.webp',variant=productVariantMeta(p);
+  return `<article class="personal-product-card ${variant?'product-has-variants':''}"><div class="personal-product-media"><img src="${esc(base)}" data-try="0" data-sku="${esc(p.sku)}" data-remote="${esc(p.image_url||'')}" data-name="${esc(p.name)}" data-category="${esc(p.category)}" onerror="productImageFallback(this)" alt="${esc(p.name)}"></div><div class="personal-product-body"><p class="eyebrow">${esc(p.category)} · COSTO</p><h3>${esc(p.name)}</h3><strong>${ars(p.cost)}</strong>${p.price_tiers?.length?`<small class="promo-line">${p.price_tiers.map(t=>`${t.qty}× ${ars(t.total)}`).join(' · ')}</small>`:''}${variant?`<div class="variant-preference compact"><label>${esc(variant.label)} <small>(opcional)</small><input id="ppv-${p.id}" type="text" maxlength="160" placeholder="${esc(variant.placeholder)}"></label><p>${esc(variant.hint)}</p></div>`:''}<div class="add-row"><div class="qty"><button onclick="personalQty('ppp-${p.id}',-1)">−</button><span id="ppp-${p.id}">1</span><button onclick="personalQty('ppp-${p.id}',1)">+</button></div><button class="btn primary compact" onclick="addPersonalProduct(${p.id})">+ Sumar</button></div></div></article>`;
 }
 function addPersonalLiquid(slug){
   const l=personalCatalog?.liquid_lines?.find(x=>x.slug===slug);if(!l)return;
@@ -377,9 +403,10 @@ function addPersonalLiquid(slug){
 }
 function addPersonalProduct(id){
   const p=personalCatalog?.products?.find(x=>x.id===id);if(!p)return;
-  const q=Number(document.querySelector('#ppp-'+id)?.textContent||1),key='p-'+id,old=personalCart.find(x=>x.key===key);
+  const q=Number(document.querySelector('#ppp-'+id)?.textContent||1),variant=(document.querySelector('#ppv-'+id)?.value||'').trim(),key='p-'+id+'-'+variant.toLowerCase(),old=personalCart.find(x=>x.key===key);
   if(old){old.quantity+=q;old.line_total=personalProductTotal(p,old.quantity)}
-  else personalCart.push({key,kind:'product',reference_id:id,quantity:q,name:p.name,line_total:personalProductTotal(p,q)});
+  else personalCart.push({key,kind:'product',reference_id:id,quantity:q,variant_note:variant||null,name:p.name+(variant?' · Preferencia: '+variant:''),line_total:personalProductTotal(p,q)});
+  const v=document.querySelector('#ppv-'+id);if(v)v.value='';
   savePersonalCart();renderPersonalCart();toast('Sumado al pedido personal');
 }
 function changePersonalCartQty(i,d){
@@ -409,7 +436,7 @@ function personalCatalogTab(name,button){
   if(name==='liquids')target.innerHTML=`<div class="personal-grid">${personalCatalog.liquid_lines.map(personalLiquidCard).join('')}</div>`;
   else{
     const products=personalCatalog.products,cats=[...new Set(products.map(p=>p.category))];
-    target.innerHTML=cats.map(cat=>`<section class="personal-category"><h3>${esc(cat)}</h3><div class="personal-product-grid">${products.filter(p=>p.category===cat).map(personalProductCard).join('')}</div></section>`).join('');
+    target.innerHTML=illustrativeCatalogNotice()+cats.map(cat=>`<section class="personal-category"><h3>${esc(cat)}</h3><div class="personal-product-grid">${products.filter(p=>p.category===cat).map(personalProductCard).join('')}</div></section>`).join('');
   }
 }
 async function adminPersonalOrder(){
@@ -434,7 +461,7 @@ async function adminPersonalOrder(){
     personalCatalogTab('liquids',document.querySelector('.personal-tabs button'));renderPersonalCart();
   }catch(e){toast(e.message);location.hash='admin'}
 }
-function personalOrderPayload(){return {items:personalCart.map(x=>({kind:x.kind,reference_id:x.reference_id,line_slug:x.line_slug,flavor:x.flavor,size_ml:x.size_ml,nicotine_mg:x.nicotine_mg,quantity:x.quantity}))}}
+function personalOrderPayload(){return {items:personalCart.map(x=>({kind:x.kind,reference_id:x.reference_id,line_slug:x.line_slug,flavor:x.flavor,size_ml:x.size_ml,nicotine_mg:x.nicotine_mg,variant_note:x.variant_note||null,quantity:x.quantity}))}}
 async function submitPersonalOrder(button){
   if(!personalCart.length)return;
   const editing=personalEditingOrderId,old=button.textContent;button.disabled=true;button.textContent=editing?'Guardando…':'Creando…';
@@ -457,7 +484,7 @@ async function editPersonalOrder(id){
         const line=c.liquid_lines.find(l=>l.id===i.reference_id);
         return {key:`l-${line?.slug||i.line_name}-${i.flavor}-${i.size_ml}-${i.nicotine_mg}`,kind:'liquid',reference_id:i.reference_id,line_slug:line?.slug||'',flavor:i.flavor,size_ml:i.size_ml,nicotine_mg:i.nicotine_mg,quantity:i.quantity,name:i.name,line_total:i.line_total_cost};
       }
-      return {key:'p-'+i.reference_id,kind:'product',reference_id:i.reference_id,quantity:i.quantity,name:i.name,line_total:i.line_total_cost};
+      return {key:'p-'+i.reference_id+'-'+String(i.variant_note||'').toLowerCase(),kind:'product',reference_id:i.reference_id,quantity:i.quantity,variant_note:i.variant_note||null,name:i.name,line_total:i.line_total_cost};
     });
     personalEditingOrderId=id;personalEditingOrderNumber=o.number;
     sessionStorage.setItem('vv-personal-edit-id',String(id));sessionStorage.setItem('vv-personal-edit-number',o.number);savePersonalCart();
