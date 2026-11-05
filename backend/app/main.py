@@ -46,6 +46,10 @@ def normalize_email(value: str | None) -> str | None:
         raise HTTPException(400,"Correo electrónico inválido")
     return email
 
+def normalize_variant_note(value: str | None) -> str | None:
+    note=" ".join((value or "").strip().split())
+    return note[:160] or None
+
 def client_for_order(db: Session, order_id: int) -> ClientAccess | None:
     return (db.query(ClientAccess)
         .join(OrderClientAccess, OrderClientAccess.client_id == ClientAccess.id)
@@ -84,6 +88,20 @@ def ensure_order_type_column():
     with engine.begin() as conn:
         conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN order_type VARCHAR(20) NOT NULL DEFAULT 'customer'")
 
+def ensure_order_item_variant_column():
+    schema=settings.db_schema if engine.dialect.name=="postgresql" else None
+    inspector=inspect(engine)
+    columns={c["name"] for c in inspector.get_columns("order_items", schema=schema)}
+    if "variant_note" in columns:
+        return
+    if schema:
+        safe_schema=schema.replace('"','""')
+        table=f'"{safe_schema}"."order_items"'
+    else:
+        table="order_items"
+    with engine.begin() as conn:
+        conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN variant_note VARCHAR(160)")
+
 def tier_total(product: Product, qty: int) -> float:
     tiers = sorted(product.price_tiers or [], key=lambda x: int(x["qty"]), reverse=True)
     if not tiers: return money(product.sale) * qty
@@ -118,7 +136,7 @@ def order_view(order: Order, public=False):
         "payment_reported": bool(order.payment_reported_at),
         "items": [{"id":i.id,"kind":i.kind,"reference_id":i.reference_id,"name":i.snapshot_name,"quantity":i.quantity,
             "unit_sale":money(i.unit_sale),"line_total_sale":money(i.line_total_sale),
-            "line_name":i.line_name,"flavor":i.flavor,"size_ml":i.size_ml,"nicotine_mg":i.nicotine_mg}
+            "line_name":i.line_name,"flavor":i.flavor,"size_ml":i.size_ml,"nicotine_mg":i.nicotine_mg,"variant_note":i.variant_note}
             for i in order.items],
         "events": [{"type":e.event_type,"detail":e.detail,"created_at":e.created_at.isoformat()} for e in order.events],
     }
@@ -148,6 +166,7 @@ def startup():
     Base.metadata.create_all(bind=engine)
     ensure_optional_email_column()
     ensure_order_type_column()
+    ensure_order_item_variant_column()
     db=SessionLocal()
     try:
         seed(db)
@@ -218,9 +237,11 @@ def create_order(payload: OrderCreate, background_tasks: BackgroundTasks, client
         elif it.kind=="product":
             p=db.get(Product,it.reference_id)
             if not p or not p.active: raise HTTPException(400,"Producto no válido")
+            note=normalize_variant_note(it.variant_note)
             total_s=tier_total(p,it.quantity); total_c=total_s
             unit=total_s/it.quantity
-            db.add(OrderItem(order_id=order.id,kind="product",reference_id=p.id,snapshot_name=p.name,quantity=it.quantity,
+            name=p.name + (f" · Preferencia: {note}" if note else "")
+            db.add(OrderItem(order_id=order.id,kind="product",reference_id=p.id,snapshot_name=name,variant_note=note,quantity=it.quantity,
                 unit_cost=unit,unit_sale=unit,line_total_cost=total_c,line_total_sale=total_s))
         else: raise HTTPException(400,"Tipo de item no válido")
     db.add(OrderEvent(order_id=order.id,event_type="created",detail=f"Pedido recibido desde la cuenta {client['username']}"))
@@ -272,9 +293,11 @@ def edit_public_order(token: str, payload: OrderCreate, background_tasks: Backgr
         elif it.kind=="product":
             p=db.get(Product,it.reference_id)
             if not p or not p.active: raise HTTPException(400,"Producto no válido")
+            note=normalize_variant_note(it.variant_note)
             total_s=tier_total(p,it.quantity); unit=total_s/it.quantity
+            name=p.name + (f" · Preferencia: {note}" if note else "")
             new_items.append(OrderItem(order_id=order.id,kind="product",reference_id=p.id,
-                snapshot_name=p.name,quantity=it.quantity,unit_cost=unit,unit_sale=unit,
+                snapshot_name=name,variant_note=note,quantity=it.quantity,unit_cost=unit,unit_sale=unit,
                 line_total_cost=total_s,line_total_sale=total_s))
         else:
             raise HTTPException(400,"Tipo de item no válido")
@@ -406,9 +429,11 @@ def create_personal_order(payload: OrderCreate, admin: dict=Depends(require_admi
         elif it.kind=="product":
             p=db.get(Product,it.reference_id)
             if not p or not p.active: raise HTTPException(400,"Producto no válido")
+            note=normalize_variant_note(it.variant_note)
             total=cost_tier_total(p,it.quantity); unit=total/it.quantity
+            name=p.name + (f" · Preferencia: {note}" if note else "")
             db.add(OrderItem(
-                order_id=order.id,kind="product",reference_id=p.id,snapshot_name=p.name,
+                order_id=order.id,kind="product",reference_id=p.id,snapshot_name=name,variant_note=note,
                 quantity=it.quantity,unit_cost=unit,unit_sale=unit,
                 line_total_cost=total,line_total_sale=total
             ))
@@ -460,9 +485,11 @@ def edit_personal_order(order_id: int, payload: OrderCreate, admin: dict=Depends
         elif it.kind=="product":
             p=db.get(Product,it.reference_id)
             if not p or not p.active: raise HTTPException(400,"Producto no válido")
+            note=normalize_variant_note(it.variant_note)
             total=cost_tier_total(p,it.quantity); unit=total/it.quantity
+            name=p.name + (f" · Preferencia: {note}" if note else "")
             new_items.append(OrderItem(
-                order_id=order.id,kind="product",reference_id=p.id,snapshot_name=p.name,
+                order_id=order.id,kind="product",reference_id=p.id,snapshot_name=name,variant_note=note,
                 quantity=it.quantity,unit_cost=unit,unit_sale=unit,
                 line_total_cost=total,line_total_sale=total
             ))
