@@ -1985,3 +1985,205 @@ body.order-edit-mode .product-card .catalog-add-btn.icon-only{
     grid-template-columns:90px minmax(0,1fr);
   }
 }
+
+
+/* === Admin edit customer order === */
+.admin-customer-order-action{
+  margin:10px 0 2px;
+  padding:10px 12px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  border:1px solid rgba(114,151,173,.20);
+  border-radius:11px;
+  background:rgba(30,49,60,.18);
+}
+.admin-customer-order-action .btn{
+  border-color:rgba(132,168,187,.34);
+  color:#c9d9e1;
+}
+.admin-customer-order-action small{
+  color:#7f9099;
+  font-size:11px;
+  text-align:right;
+}
+.admin-customer-edit-page{
+  max-width:1320px;
+}
+.admin-customer-edit-notice{
+  display:grid;
+  grid-template-columns:42px minmax(0,1fr);
+  gap:12px;
+  align-items:center;
+  margin:0 0 18px;
+  padding:13px 15px;
+  border:1px solid rgba(112,156,180,.30);
+  border-radius:14px;
+  background:linear-gradient(135deg,rgba(24,48,61,.38),rgba(12,17,21,.90));
+}
+.admin-customer-edit-notice>span{
+  width:38px;
+  height:38px;
+  display:grid;
+  place-items:center;
+  border-radius:10px;
+  background:rgba(117,159,181,.11);
+  color:#a9c8d8;
+  font-size:17px;
+}
+.admin-customer-edit-notice b{
+  display:block;
+  margin-bottom:3px;
+  color:#c8dbe4;
+  font-size:11px;
+  letter-spacing:.12em;
+}
+.admin-customer-edit-notice p{
+  margin:0;
+  color:#95a3aa;
+  font-size:11px;
+  line-height:1.5;
+}
+.admin-customer-liquid-card:before{
+  background:linear-gradient(90deg,transparent,#7197aa,transparent);
+}
+.admin-customer-product-card,
+.admin-customer-liquid-card{
+  border-color:rgba(111,150,170,.24);
+}
+.admin-edit-product-prices{
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  gap:8px;
+}
+.admin-edit-product-prices strong{
+  color:#d9e4e9;
+  font-size:15px;
+}
+.admin-edit-product-prices small{
+  color:#77868e;
+  font-size:11px;
+}
+.admin-edit-cart-panel{
+  border-color:rgba(111,154,176,.36);
+  background:linear-gradient(160deg,rgba(15,25,31,.985),rgba(8,12,15,.99));
+}
+.admin-edit-customer{
+  display:block;
+  margin-top:4px;
+  color:#9eb1ba;
+  font-size:11px;
+}
+.admin-edit-cart-list{
+  display:grid;
+  max-height:48vh;
+  overflow:auto;
+}
+.admin-edit-cart-row{
+  padding:11px 0;
+  border-bottom:1px solid rgba(255,255,255,.07);
+}
+.admin-edit-cart-row-main{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:10px;
+  align-items:center;
+}
+.admin-edit-cart-row-main>div:first-child{
+  min-width:0;
+}
+.admin-edit-cart-row-main b{
+  display:block;
+  color:#dce2e5;
+  font-size:11px;
+  line-height:1.4;
+}
+.admin-edit-cart-row-main small{
+  display:block;
+  margin-top:3px;
+  color:#adc2cc;
+  font-size:11px;
+}
+.admin-edit-cart-row-actions{
+  display:flex;
+  align-items:center;
+  gap:5px;
+}
+.admin-order-item-editor{
+  margin-top:10px;
+  padding:11px;
+  border:1px solid rgba(111,154,176,.22);
+  border-radius:11px;
+  background:rgba(5,10,13,.58);
+}
+.admin-order-item-editor label{
+  margin-bottom:9px;
+}
+.admin-order-item-editor .grid-2{
+  gap:8px;
+}
+.admin-order-item-editor-actions{
+  display:flex;
+  justify-content:flex-end;
+  gap:7px;
+  margin-top:3px;
+}
+.admin-customer-edit-cancel{
+  margin-top:8px;
+}
+.admin-customer-edit-tabs button.active{
+  border-color:rgba(116,158,180,.56);
+  background:linear-gradient(180deg,rgba(34,60,73,.70),rgba(20,37,45,.72));
+  color:#d8e7ee;
+}
+.admin-customer-edit-page .personal-cart-total strong{
+  color:#b9d2df;
+}
+
+@media(max-width:820px){
+  .admin-customer-order-action{
+    align-items:flex-start;
+    flex-direction:column;
+  }
+  .admin-customer-order-action .btn{
+    width:100%;
+  }
+  .admin-customer-order-action small{
+    text-align:left;
+  }
+  .admin-edit-cart-panel{
+    order:-1;
+  }
+  .admin-edit-cart-list{
+    max-height:300px;
+  }
+}
+@media(max-width:620px){
+  .admin-customer-edit-notice{
+    grid-template-columns:34px minmax(0,1fr);
+    padding:11px;
+  }
+  .admin-customer-edit-notice>span{
+    width:32px;
+    height:32px;
+  }
+  .admin-edit-cart-row-main{
+    grid-template-columns:1fr;
+  }
+  .admin-edit-cart-row-actions{
+    justify-content:flex-start;
+    margin-top:2px;
+  }
+  .admin-order-item-editor .grid-2{
+    grid-template-columns:1fr;
+  }
+  .admin-order-item-editor-actions{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+  }
+  .admin-order-item-editor-actions .btn{
+    width:100%;
+  }
+}
