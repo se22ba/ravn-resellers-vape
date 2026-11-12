@@ -110,6 +110,32 @@ def send_payment_reported_email(order_id: int, order_number: str, customer_name:
                 _button_html("Transferencia informada", f"{customer_name} marcó el pago como realizado.", details, "Revisar pedido", url),
                 f"pago informado {order_number}")
 
+def send_client_order_updated_email(to: str, order_token: str, order_number: str, customer_name: str,
+                                    admin_username: str, total: float, items: list[dict]):
+    if not to:
+        return
+    lines = [f"{i['quantity']}x {i['name']} — {_money(i['line_total'])}" for i in items]
+    total_text = _money(total)
+    url = f"{settings.public_app_url}#pedido={order_token}"
+    subject = f"Tu pedido {order_number} fue actualizado"
+    body = (
+        f"Hola {customer_name}.\n\n"
+        f"Actualizamos tu pedido {order_number}.\n"
+        f"Nuevo total: {total_text}\n\n"
+        + "\n".join(lines)
+        + f"\n\nVer pedido: {url}"
+    )
+    details = (
+        f"<b>Pedido:</b> {html.escape(order_number)}<br>"
+        f"<b>Nuevo total:</b> {html.escape(total_text)}<br><br>"
+        + "<br>".join(html.escape(x) for x in lines)
+    )
+    _send_email(
+        to, subject, body,
+        _button_html("Actualizamos tu pedido", f"Hola {customer_name}, modificamos el contenido de tu pedido.", details, "Ver mi pedido", url),
+        f"pedido actualizado por admin {order_number}"
+    )
+
 def send_client_status_email(to: str, order_token: str, order_number: str, customer_name: str,
                              old_status: str, new_status: str, total: float):
     if not to:
