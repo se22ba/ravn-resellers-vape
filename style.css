@@ -2187,3 +2187,30 @@ body.order-edit-mode .product-card .catalog-add-btn.icon-only{
     width:100%;
   }
 }
+
+
+/* === Admin financial KPI semantics === */
+.metrics .supplier-cost{
+  border-color:rgba(198,164,93,.48);
+  background:linear-gradient(145deg,rgba(34,29,19,.86),rgba(14,19,22,.96));
+}
+.metrics .supplier-cost b{
+  color:#e2c57f;
+}
+.metrics .supplier-cost small{
+  display:block;
+  margin-top:4px;
+  color:#7f898f;
+  font-size:11px;
+  line-height:1.25;
+}
+@media(min-width:600px){
+  .metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(min-width:900px){
+  .metrics{grid-template-columns:repeat(5,minmax(0,1fr))}
+}
+@media(max-width:420px){
+  .metrics{grid-template-columns:1fr 1fr}
+  .metrics .supplier-cost{grid-column:1/-1}
+}
