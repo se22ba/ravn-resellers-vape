@@ -2214,3 +2214,51 @@ body.order-edit-mode .product-card .catalog-add-btn.icon-only{
   .metrics{grid-template-columns:1fr 1fr}
   .metrics .supplier-cost{grid-column:1/-1}
 }
+
+
+/* === Financial KPI v2: margin vs real net result === */
+.metrics .sales-margin{
+  border-color:rgba(91,120,88,.42);
+}
+.metrics .sales-margin b{
+  color:#d7e0d4;
+}
+.metrics .personal-cost{
+  border-color:rgba(137,116,82,.34);
+  background:linear-gradient(145deg,rgba(29,25,19,.72),rgba(14,19,22,.96));
+}
+.metrics .personal-cost b{
+  color:#d6c29a;
+}
+.metrics .net-result{
+  border-color:rgba(89,126,84,.72);
+  background:linear-gradient(145deg,rgba(19,34,20,.88),rgba(12,20,15,.98));
+  box-shadow:inset 0 0 0 1px rgba(116,157,108,.08);
+}
+.metrics .net-result span{
+  color:#a9c4a4;
+}
+.metrics .net-result b{
+  color:#dcebd8;
+  font-size:18px;
+}
+.metrics .sales-margin small,
+.metrics .personal-cost small,
+.metrics .net-result small{
+  display:block;
+  margin-top:4px;
+  color:#7f898f;
+  font-size:11px;
+  line-height:1.25;
+}
+@media(min-width:900px){
+  .metrics{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .metrics .net-result{grid-column:span 2}
+}
+@media(min-width:1180px){
+  .metrics{grid-template-columns:repeat(7,minmax(0,1fr))}
+  .metrics .net-result{grid-column:auto}
+}
+@media(max-width:420px){
+  .metrics .net-result{grid-column:1/-1}
+}
