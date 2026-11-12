@@ -681,13 +681,20 @@ def metrics(db: Session=Depends(get_db)):
     supplier_cost=sum(sum(money(i.line_total_cost) for i in o.items) for o in supplier_orders)
     shipping=sum(money(o.shipping) for o in customer_orders)
 
+    personal_cost=max(0.0,supplier_cost-sales_cost)
+    sales_margin=sales-sales_cost
+    net_result=sales-supplier_cost
+
     return {
         "orders":len(customer_orders),
         "sales":sales,
         "cost":sales_cost,
         "sales_cost":sales_cost,
         "supplier_cost":supplier_cost,
-        "profit":sales-sales_cost,
+        "personal_cost":personal_cost,
+        "profit":sales_margin,
+        "sales_margin":sales_margin,
+        "net_result":net_result,
         "shipping":shipping,
         "new":sum(1 for o in customer_orders if o.status=="received"),
     }
