@@ -21,6 +21,12 @@ let personalCatalog=null,
     personalEditingOrderId=Number(sessionStorage.getItem('vv-personal-edit-id')||0),
     personalEditingOrderNumber=sessionStorage.getItem('vv-personal-edit-number')||'';
 
+let adminEditCatalog=null,
+    adminEditCart=safeJSONSession('vv-admin-edit-cart',[]),
+    adminEditingOrderId=Number(sessionStorage.getItem('vv-admin-edit-id')||0),
+    adminEditingOrderNumber=sessionStorage.getItem('vv-admin-edit-number')||'',
+    adminEditingCustomer=sessionStorage.getItem('vv-admin-edit-customer')||'';
+
 function clientCartKey(profile=clientProfile){return profile?.id?`vv-cart-client-${profile.id}`:'vv-cart'}
 function loadClientCart(profile=clientProfile){
   const key=clientCartKey(profile);
@@ -439,6 +445,172 @@ function personalCatalogTab(name,button){
     target.innerHTML=illustrativeCatalogNotice()+cats.map(cat=>`<section class="personal-category"><h3>${esc(cat)}</h3><div class="personal-product-grid">${products.filter(p=>p.category===cat).map(personalProductCard).join('')}</div></section>`).join('');
   }
 }
+
+function saveAdminEditCart(){sessionStorage.setItem('vv-admin-edit-cart',JSON.stringify(adminEditCart))}
+function resetAdminEditDraft(){
+  adminEditCart=[];adminEditingOrderId=0;adminEditingOrderNumber='';adminEditingCustomer='';adminEditCatalog=null;
+  sessionStorage.removeItem('vv-admin-edit-cart');
+  sessionStorage.removeItem('vv-admin-edit-id');
+  sessionStorage.removeItem('vv-admin-edit-number');
+  sessionStorage.removeItem('vv-admin-edit-customer');
+}
+function adminEditQty(id,d){const el=document.querySelector('#'+id);if(el)el.textContent=Math.max(1,Number(el.textContent||1)+d)}
+function adminEditLiquidCard(l){
+  const min=Math.min(...l.prices.map(p=>Number(p.sale||0)));
+  return `<article class="personal-liquid-card admin-customer-liquid-card line-${esc(l.slug)}">
+    <img class="personal-card-art" src="assets/liquids/${esc(l.slug)}.webp" data-slug="${esc(l.slug)}" data-name="${esc(l.name)}" data-try="0" onerror="liquidImageFallback(this)" alt="">
+    <div class="personal-card-shade"></div>
+    <div class="personal-card-content">
+      <div class="personal-card-head"><div><p class="eyebrow">E-LIQUID · CLIENTE</p><h3>${esc(l.name)}</h3></div><strong>desde ${ars(min)}</strong></div>
+      <label>Sabor<select id="aef-${esc(l.slug)}">${l.flavors.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('')}</select></label>
+      <div class="grid-2">
+        <label>Medida<select id="aes-${esc(l.slug)}">${l.prices.map(p=>`<option value="${p.size_ml}">${p.size_ml} ml · ${ars(p.sale)}</option>`).join('')}</select></label>
+        <label>Nicotina<select id="aen-${esc(l.slug)}">${l.nicotine_options.map(n=>`<option value="${n}">${n} mg</option>`).join('')}</select></label>
+      </div>
+      <div class="add-row"><div class="qty"><button onclick="adminEditQty('aeq-${esc(l.slug)}',-1)">−</button><span id="aeq-${esc(l.slug)}">1</span><button onclick="adminEditQty('aeq-${esc(l.slug)}',1)">+</button></div><button class="btn primary compact" onclick="addAdminEditLiquid('${esc(l.slug)}')">+ Sumar</button></div>
+    </div>
+  </article>`;
+}
+function adminEditProductCard(p){
+  const base='assets/products/'+String(p.sku||'').toLowerCase()+'.webp',variant=productVariantMeta(p);
+  return `<article class="personal-product-card admin-customer-product-card ${variant?'product-has-variants':''}">
+    <div class="personal-product-media"><img src="${esc(base)}" data-try="0" data-sku="${esc(p.sku)}" data-remote="${esc(p.image_url||'')}" data-name="${esc(p.name)}" data-category="${esc(p.category)}" onerror="productImageFallback(this)" alt="${esc(p.name)}"></div>
+    <div class="personal-product-body">
+      <p class="eyebrow">${esc(p.category)} · CLIENTE</p><h3>${esc(p.name)}</h3>
+      <div class="admin-edit-product-prices"><strong>${ars(p.sale)}</strong><small>Costo ${ars(p.cost)}</small></div>
+      ${p.price_tiers?.length?`<small class="promo-line">${p.price_tiers.map(t=>`${t.qty}× ${ars(t.total)}`).join(' · ')}</small>`:''}
+      ${variant?`<div class="variant-preference compact"><label>${esc(variant.label)} <small>(opcional)</small><input id="aev-${p.id}" type="text" maxlength="160" placeholder="${esc(variant.placeholder)}"></label><p>${esc(variant.hint)}</p></div>`:''}
+      <div class="add-row"><div class="qty"><button onclick="adminEditQty('aepq-${p.id}',-1)">−</button><span id="aepq-${p.id}">1</span><button onclick="adminEditQty('aepq-${p.id}',1)">+</button></div><button class="btn primary compact" onclick="addAdminEditProduct(${p.id})">+ Sumar</button></div>
+    </div>
+  </article>`;
+}
+function addAdminEditLiquid(slug){
+  const l=adminEditCatalog?.liquid_lines?.find(x=>x.slug===slug);if(!l)return;
+  const flavor=document.querySelector('#aef-'+CSS.escape(slug))?.value||'';
+  const size=Number(document.querySelector('#aes-'+CSS.escape(slug))?.value||0);
+  const mg=Number(document.querySelector('#aen-'+CSS.escape(slug))?.value||0);
+  const q=Number(document.querySelector('#aeq-'+CSS.escape(slug))?.textContent||1);
+  const price=l.prices.find(p=>Number(p.size_ml)===size);if(!price)return;
+  const key=`l-${slug}-${flavor}-${size}-${mg}`,old=adminEditCart.find(x=>x.key===key);
+  if(old){old.quantity+=q;old.line_total=Number(price.sale)*old.quantity}
+  else adminEditCart.push({key,kind:'liquid',reference_id:l.id,line_slug:slug,flavor,size_ml:size,nicotine_mg:mg,quantity:q,name:`${l.name} · ${flavor} · ${size}ml · ${mg}mg`,line_total:Number(price.sale)*q});
+  saveAdminEditCart();renderAdminEditCart();toast('Sumado a '+adminEditingOrderNumber);
+}
+function addAdminEditProduct(id){
+  const p=adminEditCatalog?.products?.find(x=>x.id===id);if(!p)return;
+  const q=Number(document.querySelector('#aepq-'+id)?.textContent||1),variant=(document.querySelector('#aev-'+id)?.value||'').trim(),key='p-'+id+'-'+variant.toLowerCase(),old=adminEditCart.find(x=>x.key===key);
+  if(old){old.quantity+=q;old.line_total=tierTotal(p,old.quantity)}
+  else adminEditCart.push({key,kind:'product',reference_id:id,quantity:q,variant_note:variant||null,name:p.name+(variant?' · Preferencia: '+variant:''),line_total:tierTotal(p,q)});
+  const v=document.querySelector('#aev-'+id);if(v)v.value='';
+  saveAdminEditCart();renderAdminEditCart();toast('Sumado a '+adminEditingOrderNumber);
+}
+function adminEditItemForm(i){
+  const x=adminEditCart[i];if(!x)return '';
+  if(x.kind==='liquid'){
+    const line=adminEditCatalog?.liquid_lines?.find(l=>l.slug===x.line_slug);if(!line)return '';
+    return `<div class="admin-order-item-editor">
+      <label>Sabor<select id="aeif-${i}">${line.flavors.map(v=>`<option value="${esc(v)}" ${v===x.flavor?'selected':''}>${esc(v)}</option>`).join('')}</select></label>
+      <div class="grid-2"><label>Medida<select id="aeis-${i}">${line.prices.map(p=>`<option value="${p.size_ml}" ${Number(p.size_ml)===Number(x.size_ml)?'selected':''}>${p.size_ml} ml · ${ars(p.sale)}</option>`).join('')}</select></label><label>Nicotina<select id="aein-${i}">${line.nicotine_options.map(n=>`<option value="${n}" ${Number(n)===Number(x.nicotine_mg)?'selected':''}>${n} mg</option>`).join('')}</select></label></div>
+      <label>Cantidad<input id="aeiq-${i}" type="number" min="1" max="99" value="${x.quantity}"></label>
+      <div class="admin-order-item-editor-actions"><button class="btn ghost compact" onclick="closeAdminEditItem(${i})">Cancelar</button><button class="btn primary compact" onclick="saveAdminEditItem(${i})">Aplicar</button></div>
+    </div>`;
+  }
+  const p=adminEditCatalog?.products?.find(v=>v.id===x.reference_id),variant=productVariantMeta(p);
+  return `<div class="admin-order-item-editor">
+    ${variant?`<label>${esc(variant.label)} <small>(opcional)</small><input id="aeiv-${i}" type="text" maxlength="160" value="${esc(x.variant_note||'')}" placeholder="${esc(variant.placeholder)}"></label>`:''}
+    <label>Cantidad<input id="aeiq-${i}" type="number" min="1" max="99" value="${x.quantity}"></label>
+    <div class="admin-order-item-editor-actions"><button class="btn ghost compact" onclick="closeAdminEditItem(${i})">Cancelar</button><button class="btn primary compact" onclick="saveAdminEditItem(${i})">Aplicar</button></div>
+  </div>`;
+}
+function openAdminEditItem(i){
+  document.querySelectorAll('.admin-order-item-editor-host').forEach(el=>el.innerHTML='');
+  const host=document.querySelector('#admin-edit-row-'+i+' .admin-order-item-editor-host');if(host)host.innerHTML=adminEditItemForm(i);
+}
+function closeAdminEditItem(i){const host=document.querySelector('#admin-edit-row-'+i+' .admin-order-item-editor-host');if(host)host.innerHTML=''}
+function saveAdminEditItem(i){
+  const x=adminEditCart[i];if(!x)return;
+  const q=Math.max(1,Math.min(99,Number(document.querySelector('#aeiq-'+i)?.value||1)));
+  if(x.kind==='liquid'){
+    const line=adminEditCatalog?.liquid_lines?.find(l=>l.slug===x.line_slug);if(!line)return;
+    const flavor=document.querySelector('#aeif-'+i)?.value||x.flavor,size=Number(document.querySelector('#aeis-'+i)?.value||x.size_ml),mg=Number(document.querySelector('#aein-'+i)?.value||x.nicotine_mg),price=line.prices.find(p=>Number(p.size_ml)===size);if(!price)return;
+    Object.assign(x,{flavor,size_ml:size,nicotine_mg:mg,quantity:q,name:`${line.name} · ${flavor} · ${size}ml · ${mg}mg`,line_total:Number(price.sale)*q,key:`l-${line.slug}-${flavor}-${size}-${mg}`});
+  }else{
+    const p=adminEditCatalog?.products?.find(v=>v.id===x.reference_id);if(!p)return;
+    const variant=(document.querySelector('#aeiv-'+i)?.value||x.variant_note||'').trim();
+    Object.assign(x,{quantity:q,variant_note:variant||null,name:p.name+(variant?' · Preferencia: '+variant:''),line_total:tierTotal(p,q),key:'p-'+p.id+'-'+variant.toLowerCase()});
+  }
+  saveAdminEditCart();renderAdminEditCart();toast('Cambio aplicado al pedido');
+}
+function removeAdminEditItem(i){adminEditCart.splice(i,1);saveAdminEditCart();renderAdminEditCart()}
+function renderAdminEditCart(){
+  const box=document.querySelector('#adminEditCartPanel');if(!box)return;
+  const total=adminEditCart.reduce((a,x)=>a+Number(x.line_total||0),0),count=adminEditCart.reduce((a,x)=>a+x.quantity,0);
+  box.innerHTML=`<div class="personal-cart-head"><div><p class="eyebrow">EDITANDO PEDIDO DE CLIENTE</p><h2>${esc(adminEditingOrderNumber)}</h2><small class="admin-edit-customer">${esc(adminEditingCustomer)}</small></div><span>${count} ${count===1?'ítem':'ítems'}</span></div>
+    <div class="admin-edit-cart-list">${adminEditCart.length?adminEditCart.map((x,i)=>`<div class="admin-edit-cart-row" id="admin-edit-row-${i}"><div class="admin-edit-cart-row-main"><div><b>${esc(x.name)}</b><small>${ars(x.line_total)}</small></div><div class="admin-edit-cart-row-actions"><button class="link-btn" onclick="openAdminEditItem(${i})">Editar</button><button class="link-btn danger" onclick="removeAdminEditItem(${i})">Quitar</button></div></div><div class="admin-order-item-editor-host"></div></div>`).join(''):'<div class="personal-cart-empty">El pedido quedó sin productos. Agregá al menos uno para guardarlo.</div>'}</div>
+    <div class="personal-cart-total"><span>Nuevo subtotal</span><strong>${ars(total)}</strong></div>
+    <p class="personal-cart-note">Los precios, costos y márgenes se recalculan en el servidor al guardar. El envío y el estado actual no se modifican.</p>
+    <button class="btn primary full" ${adminEditCart.length?'':'disabled'} onclick="submitAdminCustomerEdit(this)">Guardar cambios</button>
+    <button class="btn ghost full admin-customer-edit-cancel" onclick="cancelAdminCustomerEdit()">Cancelar edición</button>`;
+}
+function adminEditCatalogTab(name,button){
+  document.querySelectorAll('.admin-customer-edit-tabs button').forEach(x=>x.classList.remove('active'));button?.classList.add('active');
+  const target=document.querySelector('#adminEditCatalogContent');if(!target)return;
+  if(name==='liquids')target.innerHTML=`<div class="personal-grid">${adminEditCatalog.liquid_lines.map(adminEditLiquidCard).join('')}</div>`;
+  else{
+    const products=adminEditCatalog.products,cats=[...new Set(products.map(p=>p.category))];
+    target.innerHTML=illustrativeCatalogNotice()+cats.map(cat=>`<section class="personal-category"><h3>${esc(cat)}</h3><div class="personal-product-grid">${products.filter(p=>p.category===cat).map(adminEditProductCard).join('')}</div></section>`).join('');
+  }
+}
+function adminEditPayload(){return {items:adminEditCart.map(x=>({kind:x.kind,reference_id:x.reference_id,line_slug:x.line_slug,flavor:x.flavor,size_ml:x.size_ml,nicotine_mg:x.nicotine_mg,variant_note:x.variant_note||null,quantity:x.quantity}))}}
+async function submitAdminCustomerEdit(button){
+  if(!adminEditingOrderId||!adminEditCart.length)return;
+  const old=button.textContent;button.disabled=true;button.textContent='Guardando cambios…';
+  try{
+    const o=await req('/admin/orders/'+adminEditingOrderId+'/items',{method:'PUT',headers:{Authorization:'Bearer '+adminToken},body:JSON.stringify(adminEditPayload())});
+    const id=adminEditingOrderId;resetAdminEditDraft();toast('Pedido '+o.number+' actualizado');location.hash='admin-order='+id;
+  }catch(e){button.disabled=false;button.textContent=old;toast(e.message)}
+}
+function cancelAdminCustomerEdit(){
+  if(!confirm('¿Cancelar la edición? Los cambios sin guardar se van a descartar.'))return;
+  const id=adminEditingOrderId;resetAdminEditDraft();location.hash=id?'admin-order='+id:'admin';
+}
+async function editCustomerOrder(id){location.hash='admin-edit='+id}
+async function adminCustomerOrderEditor(id){
+  if(!adminToken)return adminLogin();
+  viewMode('admin');document.title='Editar pedido · Salón del Jarl';
+  document.querySelector('#app').innerHTML=header(true)+'<div class="catalog-loading">Cargando pedido y catálogo…</div>';
+  try{
+    const [orders,c]=await Promise.all([
+      req('/admin/orders',{headers:{Authorization:'Bearer '+adminToken}}),
+      req('/admin/catalog',{headers:{Authorization:'Bearer '+adminToken}})
+    ]);
+    const o=orders.find(x=>x.id===Number(id));
+    if(!o||o.internal){toast('Pedido de cliente no encontrado');location.hash='admin';return}
+    if(!o.editable){toast('El pedido ya fue enviado al proveedor y no puede modificarse');location.hash='admin-order='+o.id;return}
+    adminEditCatalog=c;
+    if(adminEditingOrderId!==o.id||!adminEditCart.length){
+      adminEditCart=o.items.map(i=>{
+        if(i.kind==='liquid'){
+          const line=c.liquid_lines.find(l=>l.id===i.reference_id);
+          return {key:`l-${line?.slug||i.line_name}-${i.flavor}-${i.size_ml}-${i.nicotine_mg}`,kind:'liquid',reference_id:i.reference_id,line_slug:line?.slug||'',flavor:i.flavor,size_ml:i.size_ml,nicotine_mg:i.nicotine_mg,quantity:i.quantity,name:i.name,line_total:i.line_total_sale};
+        }
+        return {key:'p-'+i.reference_id+'-'+String(i.variant_note||'').toLowerCase(),kind:'product',reference_id:i.reference_id,quantity:i.quantity,variant_note:i.variant_note||null,name:i.name,line_total:i.line_total_sale};
+      });
+    }
+    adminEditingOrderId=o.id;adminEditingOrderNumber=o.number;adminEditingCustomer=o.customer_name;
+    sessionStorage.setItem('vv-admin-edit-id',String(o.id));sessionStorage.setItem('vv-admin-edit-number',o.number);sessionStorage.setItem('vv-admin-edit-customer',o.customer_name);saveAdminEditCart();
+    document.querySelector('#app').innerHTML=header(true)+`<main class="admin-panel personal-order-page admin-customer-edit-page">
+      <div class="admin-title personal-order-title"><div><p class="eyebrow">SALÓN DEL JARL · EDICIÓN ADMINISTRATIVA</p><h1>Editar ${esc(o.number)}</h1><p class="muted">Pedido de <strong>${esc(o.customer_name)}</strong>. Podés corregir, quitar o sumar productos sin pedirle al cliente que ingrese.</p></div><a class="btn ghost compact" href="#admin-order=${o.id}">Volver al pedido</a></div>
+      <div class="admin-customer-edit-notice"><span>✎</span><div><b>EDICIÓN ADMINISTRATIVA</b><p>El pedido mantiene su estado y envío actuales. Al guardar se recalculan precios y costos con el catálogo vigente y queda registrado quién hizo la modificación.</p></div></div>
+      <div class="personal-shop-layout">
+        <section class="personal-catalog-area"><nav class="personal-tabs admin-customer-edit-tabs"><button class="active" onclick="adminEditCatalogTab('liquids',this)">💧 E-liquids</button><button onclick="adminEditCatalogTab('products',this)">▦ Insumos</button></nav><div id="adminEditCatalogContent"></div></section>
+        <aside id="adminEditCartPanel" class="personal-cart-panel admin-edit-cart-panel"></aside>
+      </div>
+    </main>`;
+    adminEditCatalogTab('liquids',document.querySelector('.admin-customer-edit-tabs button'));renderAdminEditCart();
+  }catch(e){toast(e.message);location.hash='admin'}
+}
+
 async function adminPersonalOrder(){
   if(!adminToken)return adminLogin();
   viewMode('admin');document.title='Pedido personal · Valhalla';
@@ -520,6 +692,7 @@ function adminOrder(o,history=false){
       ${o.payment_reported?'<em>TRANSFERENCIA INFORMADA</em>':''}
     </div>
     ${editablePersonal?`<div class="personal-order-card-action"><button class="btn ghost compact" onclick="editPersonalOrder(${o.id})">✎ Editar productos personales</button></div>`:''}
+    ${!internal&&!history&&o.editable?`<div class="admin-customer-order-action"><button class="btn ghost compact" onclick="editCustomerOrder(${o.id})">✎ Editar pedido</button><small>Podés modificar productos hasta que se envíe al proveedor.</small></div>`:''}
     <div class="admin-controls"><label>Envío<input inputmode="numeric" value="${o.shipping}" onchange="patchOrder(${o.id},{shipping:+this.value||0})"></label><label>Estado<select onchange="patchOrder(${o.id},{status:this.value})">${STATUS.map(([v,l])=>`<option value="${v}" ${v===o.status?'selected':''}>${l}</option>`).join('')}</select></label></div>
     <details><summary>Historial (${o.events.length})</summary>${[...o.events].reverse().map(e=>`<p>${esc(e.detail)}<small>${new Date(e.created_at).toLocaleString('es-AR')}</small></p>`).join('')}</details>
   </article>`;
@@ -527,6 +700,6 @@ function adminOrder(o,history=false){
 function selCount(){document.querySelector('#selCount').textContent=document.querySelectorAll('.batchCheck:checked').length+' seleccionados'}
 async function patchOrder(id,data){try{await req('/admin/orders/'+id,{method:'PATCH',headers:{Authorization:'Bearer '+adminToken},body:JSON.stringify(data)});admin()}catch(e){toast(e.message)}}
 async function createBatch(){let ids=[...document.querySelectorAll('.batchCheck:checked')].map(x=>+x.value);if(!ids.length)return toast('Seleccioná al menos un pedido');try{let b=await req('/admin/supplier-batches',{method:'POST',headers:{Authorization:'Bearer '+adminToken},body:JSON.stringify({order_ids:ids,extra_items:[]})});document.body.insertAdjacentHTML('beforeend',`<div class="modal-scrim" id="batch"><div class="batch-modal rune-frame"><button class="modal-close" onclick="document.querySelector('#batch').remove()">✕</button><p class="eyebrow">${esc(b.number)}</p><h2>Pedido consolidado</h2><pre class="batch-output">${esc(b.text)}</pre><button class="btn primary full" onclick="navigator.clipboard.writeText(\`${b.text.replace(/`/g,'\`')}\`);toast('Copiado')">Copiar listado</button></div></div>`);admin()}catch(e){toast(e.message)}}
-function route(){let h=location.hash.slice(1);if(h==='admin')return admin();if(h.startsWith('admin-order='))return admin(+h.split('=')[1]);if(h==='admin-users')return adminUsersView();if(h==='admin-catalog')return adminCatalog();if(h==='admin-personal')return adminPersonalOrder();if(!clientToken)return privateWelcome();if(h==='checkout')checkout();else if(h.startsWith('pedido='))orderStatus(h.split('=')[1]);else shop()}
+function route(){let h=location.hash.slice(1);if(h==='admin')return admin();if(h.startsWith('admin-order='))return admin(+h.split('=')[1]);if(h.startsWith('admin-edit='))return adminCustomerOrderEditor(+h.split('=')[1]);if(h==='admin-users')return adminUsersView();if(h==='admin-catalog')return adminCatalog();if(h==='admin-personal')return adminPersonalOrder();if(!clientToken)return privateWelcome();if(h==='checkout')checkout();else if(h.startsWith('pedido='))orderStatus(h.split('=')[1]);else shop()}
 addEventListener('hashchange',route);
 route();
