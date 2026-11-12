@@ -22,7 +22,7 @@ from .auth import (
     login, require_admin, login_client, require_client,
     normalize_username, normalize_phone, hash_password, seed_admins
 )
-from .notifications import send_new_order_email, send_order_edited_email, send_payment_reported_email, send_client_status_email
+from .notifications import send_new_order_email, send_order_edited_email, send_payment_reported_email, send_client_status_email, send_client_order_updated_email
 
 settings = get_settings()
 app = FastAPI(title="Private API", version="1.1.0", docs_url=None, redoc_url=None, openapi_url=None)
@@ -559,6 +559,81 @@ def admin_patch_client(client_id:int,payload:ClientPatch,db:Session=Depends(get_
 def admin_orders(db: Session=Depends(get_db)):
     orders=db.query(Order).options(joinedload(Order.items),joinedload(Order.events)).order_by(Order.created_at.desc()).all()
     return [order_view(o) for o in orders]
+
+@app.put("/api/admin/orders/{order_id}/items")
+def admin_edit_order_items(order_id:int,payload:OrderCreate,background_tasks:BackgroundTasks,admin:dict=Depends(require_admin),db:Session=Depends(get_db)):
+    order=db.query(Order).options(joinedload(Order.items),joinedload(Order.events)).filter(Order.id==order_id).first()
+    if not order: raise HTTPException(404,"Pedido no encontrado")
+    if order.order_type=="internal":
+        raise HTTPException(400,"Los pedidos personales se editan desde Pedido personal")
+    if order.status not in CLIENT_EDITABLE_STATUSES:
+        raise HTTPException(409,"El pedido ya fue enviado al proveedor y no puede modificarse")
+
+    new_items=[]
+    for it in payload.items:
+        if it.kind=="liquid":
+            line=db.query(LiquidLine).filter(LiquidLine.slug==it.line_slug,LiquidLine.active==True).first()
+            if not line or not it.flavor or it.size_ml is None or it.nicotine_mg is None:
+                raise HTTPException(400,"Líquido incompleto")
+            if it.nicotine_mg not in (line.nicotine_options or []):
+                raise HTTPException(400,"MG de nicotina no válido")
+            fl=db.query(LiquidFlavor).filter(
+                LiquidFlavor.line_id==line.id,
+                func.lower(LiquidFlavor.name)==it.flavor.lower(),
+                LiquidFlavor.active==True
+            ).first()
+            price=db.query(LiquidPrice).filter(LiquidPrice.line_id==line.id,LiquidPrice.size_ml==it.size_ml).first()
+            if not fl or not price: raise HTTPException(400,"Sabor o medida no válido")
+            uc,us=money(price.cost),money(price.sale)
+            new_items.append(OrderItem(
+                order_id=order.id,kind="liquid",reference_id=line.id,
+                snapshot_name=f"{line.name} · {fl.name} · {it.size_ml}ml · {it.nicotine_mg}mg",
+                line_name=line.name,flavor=fl.name,size_ml=it.size_ml,nicotine_mg=it.nicotine_mg,
+                quantity=it.quantity,unit_cost=uc,unit_sale=us,
+                line_total_cost=uc*it.quantity,line_total_sale=us*it.quantity
+            ))
+        elif it.kind=="product":
+            p=db.get(Product,it.reference_id)
+            if not p or not p.active: raise HTTPException(400,"Producto no válido")
+            note=normalize_variant_note(it.variant_note)
+            total_s=tier_total(p,it.quantity)
+            total_c=total_s
+            unit=total_s/it.quantity
+            name=p.name + (f" · Preferencia: {note}" if note else "")
+            new_items.append(OrderItem(
+                order_id=order.id,kind="product",reference_id=p.id,
+                snapshot_name=name,variant_note=note,quantity=it.quantity,
+                unit_cost=unit,unit_sale=unit,
+                line_total_cost=total_c,line_total_sale=total_s
+            ))
+        else:
+            raise HTTPException(400,"Tipo de item no válido")
+
+    if not new_items:
+        raise HTTPException(400,"El pedido debe tener al menos un producto")
+
+    db.query(OrderItem).filter(OrderItem.order_id==order.id).delete(synchronize_session=False)
+    db.flush()
+    db.add_all(new_items)
+    db.add(OrderEvent(
+        order_id=order.id,
+        event_type="admin_edited",
+        detail=f"Pedido modificado por administrador {admin['username']}"
+    ))
+    db.commit()
+
+    order=db.query(Order).options(joinedload(Order.items),joinedload(Order.events)).filter(Order.id==order.id).first()
+    view=order_view(order)
+
+    customer=client_for_order(db,order.id)
+    if customer and customer.email:
+        background_tasks.add_task(
+            send_client_order_updated_email,
+            customer.email,order.public_token,order.number,order.customer_name,admin["username"],view["total"],
+            [{"quantity":i["quantity"],"name":i["name"],"line_total":i["line_total_sale"]} for i in view["items"]],
+        )
+
+    return view
 
 @app.patch("/api/admin/orders/{order_id}",dependencies=[Depends(require_admin)])
 def patch_order(order_id:int,payload:OrderAdminPatch,background_tasks:BackgroundTasks,db:Session=Depends(get_db)):
