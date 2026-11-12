@@ -669,14 +669,28 @@ def patch_order(order_id:int,payload:OrderAdminPatch,background_tasks:Background
 
 @app.get("/api/admin/metrics",dependencies=[Depends(require_admin)])
 def metrics(db: Session=Depends(get_db)):
-    orders=db.query(Order).options(joinedload(Order.items)).filter(
+    customer_orders=db.query(Order).options(joinedload(Order.items)).filter(
         Order.status!="cancelled", Order.order_type=="customer"
     ).all()
-    sales=sum(sum(money(i.line_total_sale) for i in o.items) for o in orders)
-    cost=sum(sum(money(i.line_total_cost) for i in o.items) for o in orders)
-    shipping=sum(money(o.shipping) for o in orders)
-    return {"orders":len(orders),"sales":sales,"cost":cost,"profit":sales-cost,"shipping":shipping,
-        "new":sum(1 for o in orders if o.status=="received")}
+    supplier_orders=db.query(Order).options(joinedload(Order.items)).filter(
+        Order.status!="cancelled"
+    ).all()
+
+    sales=sum(sum(money(i.line_total_sale) for i in o.items) for o in customer_orders)
+    sales_cost=sum(sum(money(i.line_total_cost) for i in o.items) for o in customer_orders)
+    supplier_cost=sum(sum(money(i.line_total_cost) for i in o.items) for o in supplier_orders)
+    shipping=sum(money(o.shipping) for o in customer_orders)
+
+    return {
+        "orders":len(customer_orders),
+        "sales":sales,
+        "cost":sales_cost,
+        "sales_cost":sales_cost,
+        "supplier_cost":supplier_cost,
+        "profit":sales-sales_cost,
+        "shipping":shipping,
+        "new":sum(1 for o in customer_orders if o.status=="received"),
+    }
 
 @app.post("/api/admin/supplier-batches",dependencies=[Depends(require_admin)])
 def create_batch(payload:BatchCreate,background_tasks:BackgroundTasks,db:Session=Depends(get_db)):
